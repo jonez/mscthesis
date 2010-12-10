@@ -4,4 +4,4 @@
 
 USER_OBJS :=
 
-LIBS := -lOpenCL
+LIBS := -lOpenCL -lm
