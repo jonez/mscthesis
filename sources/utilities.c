@@ -93,9 +93,11 @@ float* loadFloatBlock(const char *path, const int size) {
 	// open file for reading
 	fd = fopen(path, "r");
 	if (fd == NULL) {
-		printf("Error while opennig %s file.\n", path);
+		printf("Error while opennig '%s' file.\n", path);
 		return NULL;
 	}
+
+	printf("Loading dataset from '%s' file.\n", path);
 
 	// determine file size
 

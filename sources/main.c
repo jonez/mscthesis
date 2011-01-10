@@ -11,23 +11,30 @@
 
 //OpenGL stuff
 #include <GL/glew.h>
-#if defined __APPLE__ || defined(MACOSX)
-#include <GLUT/glut.h>
-#else
+//#if defined __APPLE__ || defined(MACOSX)
+//#include <GLUT/glut.h>
+//#else
 #include <GL/glut.h>
-#endif
+//#endif
 
 
 #include "common.h"
 #include "utilities.h"
+
 #include "mcCore.h"
+#include "clScan.h"
+#include "clHelper.h"
+
+#include "mcDispatcher.h"
 
 int xValue = 0;
 int yValue = 0;
-int zValue = 150;
+int zValue = 350;
 
-cl_float4* results1;
-size_t size, sizeX, sizeY, sizeZ;
+GLuint vbo;
+//cl_float4 *vertices, *normals;
+size_t count, sizeX, sizeY, sizeZ;
+mcdMemParts* vertices;
 
 
 void reshape(int w, int h) {
@@ -41,6 +48,8 @@ void reshape(int w, int h) {
 	// Reset the coordinate system before modifying
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
+
+//	normals = NULL;
 
 	// Set the viewport to be the entire window
 
@@ -68,21 +77,34 @@ void draw(void) {
 		glPushMatrix();
 			glTranslatef(-(float)sizeX / 2, -(float)sizeY / 2, -(float)sizeZ / 2);
 
-			for(int i = 0; i < size; i += 3) {
-				glBegin(GL_LINE_LOOP);
-//					glBegin(GL_TRIANGLES);
-					glVertex3f(results1[i].s[0], results1[i].s[1], results1[i].s[2]);
-					glVertex3f(results1[i + 1].s[0], results1[i + 1].s[1], results1[i + 1].s[2]);
-					glVertex3f(results1[i + 2].s[0], results1[i + 2].s[1], results1[i + 2].s[2]);
-				glEnd();
-			}
+			for(int i = 0; i < count; i++)
+				for(int j = 0; j < vertices[i]->size; j += 3) {
+//					printf("%.2f\n", vertices[i]->data[j].s[2]);
+					glBegin(GL_LINE_LOOP);
+					//glBegin(GL_TRIANGLES);
+						glVertex3f(vertices[i]->data[j].s[0], vertices[i]->data[j].s[1], vertices[i]->data[j].s[2]);
+						glVertex3f(vertices[i]->data[j + 1].s[0], vertices[i]->data[j + 1].s[1], vertices[i]->data[j + 1].s[2]);
+						glVertex3f(vertices[i]->data[j + 2].s[0], vertices[i]->data[j + 2].s[1], vertices[i]->data[j + 2].s[2]);
+					glEnd();
+				}
+
+//			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+//			glVertexPointer(3, GL_FLOAT, 4, 0);
+//
+//			glEnableClientState(GL_VERTEX_ARRAY);
+//
+//			glDrawArrays(GL_POINTS, 0, 900);
+//
+//			glDisableClientState(GL_VERTEX_ARRAY);
 
 		glPopMatrix();
 
 	glPopMatrix();
 
 
-	glFlush();
+
+	glFinish();
+
 
 }
 
@@ -160,38 +182,59 @@ void initGL(int argc, char** argv) {
 	glutInitWindowSize(800, 600);
 	glutCreateWindow("Marching Cubes-OpenCL");
 
-//	glLight();
+	if(glewInit() != GLEW_OK)
+		fprintf(stderr, "Failed to initialize GLEW.\n");
+
+	if(!glewIsSupported("GL_VERSION_2_0 GL_ARB_vertex_buffer_object"))
+		fprintf(stderr, "VBOs not supported.\n");
+
+	//	glLight();
 
 	// Register callbacks:
 	glutDisplayFunc(display);
 	glutReshapeFunc(reshape);
 	glutKeyboardFunc(keyboard);
 
-	// Turn the flow of control over to GLUT
-	glutMainLoop();
-
 }
 
 int main(int argc, char** argv) {
 
+	initGL(argc, argv);
+
 //	clsTestScan();
 //	test();
 
-	sizeX = 128;
-	sizeY = 128;
-	sizeZ = 128;
+	clhSetVerbose(FALSE);
+	clsSetVerbose(FALSE);
 
-	cl_float isoValue = 15000;
+	sizeX = 255;
+	sizeY = 255;
+	sizeZ = 255;
+
+	cl_float isoValue = 50;
 
 	cl_float4 distance = {{1.0f, 1.0f, 1.0f, 0.0f}};
-	cl_int4 offset = {{0, 0, 0, 0}};
+//	cl_int4 offset = {{0, 0, 0, 0}};
 
-	cl_float* data = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
-//	cl_float* data = loadFloatBlock("data.raw", sizeX + 1);
+//	cl_float* data = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
+
+//	for(int i = 0; i < (sizeX + 1) * (sizeY + 1) * (sizeZ + 1); i += (sizeX + 1) * (sizeY + 1) * 16)
+//		printf("%d-%.0f,", i, data[i]);
+//	printf("\n");
+//
+//	int c = 0;
+//	for(int i = 0; i < (sizeX + 1) * (sizeY + 1) * (sizeZ + 1); i++)
+//		if(data[i] < isoValue) c++;
+//	printf("%d\n", c);
+	cl_float* data = loadFloatBlock("data/skull.raw", sizeX + 1);
 //	cl_float4 *results1 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 15);
 //	cl_float4 *results2 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 5);
 
-	runCL(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &results1, NULL, &size);
+//	runCL(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &vertices, &vbo, &count);
+	dispatch(data, isoValue, distance, sizeX, sizeY, sizeZ, &vbo, &vertices, &count);
+
+	for(int i = 0; i < count; i++)
+		printf("%d - %d (%dKB)\n", i, vertices[i]->size, vertices[i]->size * 16 / KB);
 
 
 //	printf("size: %i, isovalue: %.0f\n\n", size, isoValue);
@@ -243,10 +286,11 @@ int main(int argc, char** argv) {
 //			printf("^^^ %i ^^^\n", i);
 //	}
 
-	initGL(argc, argv);
+	// Turn the flow of control over to GLUT
+	glutMainLoop();
 
 	free(data);
-	free(results1);
+	free(vertices);
 		
 	return 0;
 	

@@ -9,10 +9,9 @@
 #define CLHELPER_H_
 
 #include <CL/cl.h>
+#include <GL/gl.h>
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define KERNELS_PATH "sources/kernels"
 #define OPENCL_COMPILER_OPTIONS "-Wall"
 
 
@@ -29,6 +28,7 @@ struct _clhResources {
 typedef struct _clhResources* clhResources;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 int clhGetVerbose();
 
@@ -76,6 +76,11 @@ char* clhLoadSourceFile(const char*		/* path */);
 cl_program clhBuildProgramFromFile(const char*				/* sourceFile */,
 								   const clhResources		/* resources */,
 								   cl_int*					/* err */);
+
+cl_mem clhCreateGLCLBuffer(const cl_context 		/* context */,
+						   const size_t 			/* size */,
+						   GLuint*					/* vbo */,
+						   cl_int*					/* err */);
 
 
 #endif /* CLHELPER_H_ */

@@ -22,6 +22,8 @@ cl_mem clsScanFromDevice(const clhResources		/* resources */,
 						 cl_float*				/* sum */,
 						 cl_int*				/* err */);
 
+void clsRelease();
+
 //int testScan();
 
 

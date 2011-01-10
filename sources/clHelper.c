@@ -4,12 +4,19 @@
  *  Created on: Oct 1, 2010
  *      Author: jonez
  */
+#include <GL/glew.h>
 
 #include "clHelper.h"
+
+// use with #include <GL/glext.h>
+//#define GL_GLEXT_PROTOTYPES
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <GL/glx.h>
+//#include <GL/glext.h>
+#include <CL/cl_gl.h>
 
 #include "common.h"
 
@@ -220,7 +227,14 @@ clhResources clhInitResources(const char* platformName, const cl_device_type sel
 	}
 
 	// Create context with all devices
-	context = clCreateContext(NULL, devCount, devices, NULL, NULL, &retErr);
+	cl_context_properties contexProperties[] = {
+			 CL_CONTEXT_PLATFORM, (cl_context_properties)(platform),
+			 CL_GL_CONTEXT_KHR, (cl_context_properties)glXGetCurrentContext(),
+			 CL_GLX_DISPLAY_KHR, (cl_context_properties)glXGetCurrentDisplay(),
+			 0
+	 };
+
+	context = clCreateContext(contexProperties, devCount, devices, NULL, NULL, &retErr);
 	if(retErr || CLH_VERBOSE) {
 		clhErrorInfo(retErr, "creating context", "clHelper");
 
@@ -428,7 +442,7 @@ char* clhLoadSourceFile(const char* fn) {
 	char* 		src = NULL;
 
 	char path[SMALL_STRING_SIZE] = "";
-	snprintf(path, sizeof(path), "%s/%s", KERNELS_PATH, fn);
+	snprintf(path, sizeof(path), "%s%s", KERNELS_PATH, fn);
 
 	// open file for reading
 	fd = fopen(path, "r");
@@ -473,5 +487,64 @@ cl_program clhBuildProgramFromFile(const char *sourceFile, clhResources resource
 //	free(source);
 
 	return clhBuildProgramFromSource(source, resources, err);
+
+}
+
+GLuint clhCreateVBO(GLsizei size) {
+
+	// ID of VBO
+	GLuint		id;
+
+	// generate a new VBO and get the associated ID
+//	glGenBuffersARB(1, &id);
+	glGenBuffers(1, &id);
+
+	// bind VBO in order to use
+//	glBindBufferARB(GL_ARRAY_BUFFER_ARB, id);
+	glBindBuffer(GL_ARRAY_BUFFER, id);
+
+	// upload data to VBO
+//	glBufferDataARB(GL_ARRAY_BUFFER_ARB, size, NULL, GL_DYNAMIC_DRAW_ARB);
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_DRAW);
+
+	// delete VBO when program terminated
+//	glDeleteBuffersARB(1, &vboId);
+//	glDeleteBuffers(1, &vboId);
+
+	return id;
+
+}
+
+cl_mem clhBindNewCLBufferToVBO(cl_context context, size_t size, GLuint* vbo,
+							   cl_int* err) {
+
+	cl_int		retErr;
+	cl_mem		vboBuffer;
+
+	vboBuffer = clCreateFromGLBuffer(context, CL_MEM_READ_WRITE, *vbo, &retErr);
+	if(retErr || CLH_VERBOSE)
+		clhErrorInfo(retErr, "binding new CL buffer to VBO", "clHelper");
+
+	if(err) *err = retErr;
+
+	return vboBuffer;
+
+}
+
+cl_mem clhCreateGLCLBuffer(const cl_context context, const size_t size,
+						   GLuint* vbo, cl_int* err) {
+
+	cl_int		retErr;
+	GLuint		retVBO;
+	cl_mem		buffer;
+
+
+	retVBO = clhCreateVBO(size);
+
+	buffer = clhBindNewCLBufferToVBO(context, size, &retVBO, &retErr);
+
+	if(err) *err = retErr;
+
+	return buffer;
 
 }

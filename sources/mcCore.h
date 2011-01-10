@@ -7,9 +7,15 @@
 
 #include "clHelper.h"
 
-int runCL(cl_float* input, cl_float isoValue,
+int mcRunCL(cl_float* input, cl_float isoValue,
 		  size_t sizeX, size_t sizeY, size_t sizeZ,
 		  cl_float4 valuesDistance, cl_int4 valuesOffset,
-		  cl_float4** output1, cl_float4** output2, size_t* size);
+		  cl_float4** output, GLuint* vbo, size_t* size/*,
+		  clhResources resources, cl_program program,
+		  cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
+		  cl_kernel classificationKernel, cl_kernel compactionKernel,
+		  cl_kernel generationKernel*/);
+
+void mcReleaseCL();
 
 void test();

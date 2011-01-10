@@ -9,6 +9,8 @@
  *		  use local memory
  */
 
+#pragma OPENCL EXTENSION cl_khr_gl_sharing : enable
+
 #define VOXEL_VERTICES 16 // vertices per voxel
 #define VOXEL_TRIANGLES 5 // triangles per voxel
 #define TRIANGLE_VERTICES 3 // vertices per triangle
@@ -89,6 +91,8 @@ kernel void mcClassification(global float* values, const float isoValue,
 	uchar vertices = vTable[combination];
 	results1[position] = vertices;
 	results2[position] = (vertices > 0) ? OCCUPIED_VOXEL : EMPTY_VOXEL;
+//	results1[position] = corners[0];
+//	results2[position] = corners[7];
 	
 }
 
@@ -150,7 +154,7 @@ float4 triangleNormal(float4* t) {
 // surface vertices in groups of 3 and 'results2' (float4) containing normal
 // vectors for each triangle
 kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
-						 float4 valuesDistance, uint4 valuesOffset,
+						 float4 valuesDistance, int4 valuesOffset,
 						 constant uchar* tTable, constant uchar* vTable,
 						 global float* scanned, global size_t* compacted,
 						 global float4* results1/*, global float4* results2*/) {
@@ -159,7 +163,7 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 	size_t rawPosition = compacted[position];
 	int4 coordinates = getCoordinates(rawPosition, sizes);
 	
-	// get coordinates
+	// get kernel coordinates
 	int x = coordinates.x;
 	int y = coordinates.y;
 	int z = coordinates.z;
@@ -167,7 +171,7 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 	int yi = y + 1;
 	int zi = z + 1;
 	
-	// proper coordinates in float data type
+	// voxel coordinates in float data type
 	float xf = x + valuesOffset.x;
 	float yf = y + valuesOffset.y;
 	float zf = z + valuesOffset.z;
@@ -175,7 +179,7 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 	float yfi = yf + valuesDistance.y;
 	float zfi = zf + valuesDistance.z;
 	
-	// work-item and data set sizes
+	// work-item and dataset sizes
 	uint sX = sizes.x;
 	uint sY = sizes.y;
 	uint siX = sX + 1;

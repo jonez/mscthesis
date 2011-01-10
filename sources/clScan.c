@@ -64,7 +64,9 @@
 #include "utilities.h"
  
 ////////////////////////////////////////////////////////////////////////////////////////////////////
- 
+
+static int initialized = FALSE;
+
 #define DEBUG_INFO      (0)
 int     GROUP_SIZE      = 256;
 #define NUM_BANKS       (16)
@@ -699,28 +701,34 @@ cl_mem clsScanFromDevice(const clhResources resources, const int deviceIndex,
 	ComputeCommands		= resources->cmdQueues[deviceIndex];
 	GROUP_SIZE			= resources->wgSizes[deviceIndex];
 
-	ComputeProgram = clhBuildProgramFromFile(KERNELS_SOURCE_FILE, resources, &retErr);
+	if(!initialized) {
 
-	ComputeKernels = (cl_kernel*)malloc(KernelCount * sizeof(cl_kernel));
-	for(int i = 0; i < KernelCount; i++) {
-		// Create each compute kernel from within the program
-		ComputeKernels[i] = clCreateKernel(ComputeProgram, KernelNames[i], &retErr);
-		if(CLS_VERBOSE || !ComputeKernels[i] || retErr) {
-			clhErrorInfo(retErr, "creating kernel", "clScan");
+		ComputeProgram = clhBuildProgramFromFile(KERNELS_SOURCE_FILE, resources, &retErr);
 
+		ComputeKernels = (cl_kernel*)malloc(KernelCount * sizeof(cl_kernel));
+		for(int i = 0; i < KernelCount; i++) {
+			// Create each compute kernel from within the program
+			ComputeKernels[i] = clCreateKernel(ComputeProgram, KernelNames[i], &retErr);
+			if(CLS_VERBOSE || !ComputeKernels[i] || retErr) {
+				clhErrorInfo(retErr, "creating kernel", "clScan");
+
+				if(retErr) {
+					if(err) *err = retErr;
+					return NULL;
+				}
+			}
+
+			size_t wgSize = clhGetKernelMaxWorkGroupSize(ComputeKernels[i], ComputeDeviceId, &retErr);
 			if(retErr) {
 				if(err) *err = retErr;
 				return NULL;
 			}
+
+			GROUP_SIZE = min(GROUP_SIZE, wgSize);
 		}
 
-		size_t wgSize = clhGetKernelMaxWorkGroupSize(ComputeKernels[i], ComputeDeviceId, &retErr);
-		if(retErr) {
-			if(err) *err = retErr;
-			return NULL;
-		}
+		initialized = TRUE;
 
-		GROUP_SIZE = min(GROUP_SIZE, wgSize);
 	}
 
 	outputBuffer = clCreateBuffer(ComputeContext, CL_MEM_READ_WRITE, sizeof(cl_float) * size, NULL, &retErr);
@@ -747,23 +755,41 @@ cl_mem clsScanFromDevice(const clhResources resources, const int deviceIndex,
 	}
 
 	if(sum) {
-		clEnqueueReadBuffer(ComputeCommands, inputBuffer, CL_TRUE,
+		retErr = clEnqueueReadBuffer(ComputeCommands, inputBuffer, CL_TRUE,
 				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum[0], 0, NULL, NULL);
-		clEnqueueReadBuffer(ComputeCommands, outputBuffer, CL_TRUE,
+		retErr |= clEnqueueReadBuffer(ComputeCommands, outputBuffer, CL_TRUE,
 				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum[1], 0, NULL, NULL);
+		if(CLS_VERBOSE || retErr) {
+				clhErrorInfo(retErr, "retrieving sum", "clScan");
+
+				if(retErr) {
+					if(err) *err = retErr;
+					return NULL;
+				}
+			}
 
 		*sum = retSum[0] + retSum[1];
 	}
 
-	// shutdown and cleanup
+	// cleanup
 	ReleasePartialSums();
+
+
+	return outputBuffer;
+}
+
+void clsRelease() {
+
+	initialized = FALSE;
+
 	for(int i = 0; i < KernelCount; i++)
 		clReleaseKernel(ComputeKernels[i]);
 	clReleaseProgram(ComputeProgram);
 
 	free(ComputeKernels);
 
-	return outputBuffer;
+	printf("%s resources released!\n", __FILE__);
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
