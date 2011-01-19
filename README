@@ -1,0 +1,11 @@
+Version 0.4
+
+Changes from previous versions:
+Added the calculation of triangles normals and the possibility of using VBOs.
+
+Summary all code:
+-Implementation of a opencl helper library, covering almost all verbose funcionality
+-Implementation of mc algorithm with opencl (geometry and shading)
+-Algorithm provided with compation, allowing to save processing time
+-Possibility of using VBOs
+-Algorithm allows the processing of datasets larger than device's memory (base work for multi-device)

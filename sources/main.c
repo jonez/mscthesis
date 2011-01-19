@@ -11,11 +11,11 @@
 
 //OpenGL stuff
 #include <GL/glew.h>
-//#if defined __APPLE__ || defined(MACOSX)
-//#include <GLUT/glut.h>
-//#else
+#if defined __APPLE__ || defined(MACOSX)
+#include <GLUT/glut.h>
+#else
 #include <GL/glut.h>
-//#endif
+#endif
 
 
 #include "common.h"
@@ -34,7 +34,7 @@ int zValue = 350;
 GLuint vbo;
 //cl_float4 *vertices, *normals;
 size_t count, sizeX, sizeY, sizeZ;
-mcdMemParts* vertices;
+mcdMemParts* geometry;
 
 
 void reshape(int w, int h) {
@@ -78,24 +78,31 @@ void draw(void) {
 			glTranslatef(-(float)sizeX / 2, -(float)sizeY / 2, -(float)sizeZ / 2);
 
 			for(int i = 0; i < count; i++)
-				for(int j = 0; j < vertices[i]->size; j += 3) {
-//					printf("%.2f\n", vertices[i]->data[j].s[2]);
-					glBegin(GL_LINE_LOOP);
-					//glBegin(GL_TRIANGLES);
-						glVertex3f(vertices[i]->data[j].s[0], vertices[i]->data[j].s[1], vertices[i]->data[j].s[2]);
-						glVertex3f(vertices[i]->data[j + 1].s[0], vertices[i]->data[j + 1].s[1], vertices[i]->data[j + 1].s[2]);
-						glVertex3f(vertices[i]->data[j + 2].s[0], vertices[i]->data[j + 2].s[1], vertices[i]->data[j + 2].s[2]);
+				for(size_t v = 0, n = 0; v < geometry[i]->size; v += 3, n++) {
+//					printf("%.2f", vertices[i]->data[j].s[0]);
+//					printf(" %.2f", vertices[i]->data[j].s[1]);
+//					printf(" %.2f\n", vertices[i]->data[j].s[2]);
+//					fflush(NULL);
+
+//					glBegin(GL_LINE_LOOP);
+					glBegin(GL_TRIANGLES);
+						glNormal3f(geometry[i]->normals[n].s[0], geometry[i]->normals[n].s[1], geometry[i]->normals[n].s[2]);
+						glVertex3f(geometry[i]->triangles[v].s[0], geometry[i]->triangles[v].s[1], geometry[i]->triangles[v].s[2]);
+						glVertex3f(geometry[i]->triangles[v + 1].s[0], geometry[i]->triangles[v + 1].s[1], geometry[i]->triangles[v + 1].s[2]);
+						glVertex3f(geometry[i]->triangles[v + 2].s[0], geometry[i]->triangles[v + 2].s[1], geometry[i]->triangles[v + 2].s[2]);
 					glEnd();
+
+//					glBindBuffer(GL_ARRAY_BUFFER, geometry[i]->trianglesVBO);
+//					glVertexPointer(3, GL_FLOAT, 4, 0);
+//
+//					glEnableClientState(GL_VERTEX_ARRAY);
+//
+//					glDrawArrays(GL_TRIANGLES, 0, geometry[i]->size);
+//
+//					glDisableClientState(GL_VERTEX_ARRAY);
+
 				}
 
-//			glBindBuffer(GL_ARRAY_BUFFER, vbo);
-//			glVertexPointer(3, GL_FLOAT, 4, 0);
-//
-//			glEnableClientState(GL_VERTEX_ARRAY);
-//
-//			glDrawArrays(GL_POINTS, 0, 900);
-//
-//			glDisableClientState(GL_VERTEX_ARRAY);
 
 		glPopMatrix();
 
@@ -158,14 +165,31 @@ void keyboard(unsigned char key, int x, int y) {
 
 void glLight() {
 
-	GLfloat mat_specular[] = { 1.0, 1.0, 1.0, 1.0 };
-	GLfloat mat_shininess[] = { 50.0 };
-	GLfloat light_position[] = { 1.0, 1.0, 1.0, 0.0 };
+	GLfloat lmodel_ambient[] = { 0.2, 0.2, 0.2, 1 };
+	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, lmodel_ambient);
 
+	GLfloat light_ambient[] = {0.2, 0.2, 0.2, 1.0};
+	glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
+
+	GLfloat diffuseMaterial[] = { 0.5, 0.5, 0.5, 1.0 };
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, diffuseMaterial);
+
+	GLfloat mat_specular[] = { 1.0, 1.0, 1.0, 1.0 };
 	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+
+	GLfloat mat_shininess[] = { 50.0 };
 	glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
+
+	GLfloat light_position[] = { 0.0, 0.0, 0.0, 1.0 };
 	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
 
+	glColorMaterial(GL_FRONT, GL_DIFFUSE);
+
+
+
+//	glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE);
+
+	glShadeModel(GL_SMOOTH);
 	glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0);
 	glDepthFunc(GL_LEQUAL);
@@ -188,7 +212,7 @@ void initGL(int argc, char** argv) {
 	if(!glewIsSupported("GL_VERSION_2_0 GL_ARB_vertex_buffer_object"))
 		fprintf(stderr, "VBOs not supported.\n");
 
-	//	glLight();
+	glLight();
 
 	// Register callbacks:
 	glutDisplayFunc(display);
@@ -204,17 +228,17 @@ int main(int argc, char** argv) {
 //	clsTestScan();
 //	test();
 
-	clhSetVerbose(FALSE);
-	clsSetVerbose(FALSE);
+	clhSetVerbose(TRUE);
+	clsSetVerbose(TRUE);
 
 	sizeX = 255;
 	sizeY = 255;
 	sizeZ = 255;
 
-	cl_float isoValue = 50;
+	cl_float isoValue = 100;
 
 	cl_float4 distance = {{1.0f, 1.0f, 1.0f, 0.0f}};
-//	cl_int4 offset = {{0, 0, 0, 0}};
+	cl_int4 offset = {{0, 0, 0, 0}};
 
 //	cl_float* data = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
 
@@ -226,15 +250,30 @@ int main(int argc, char** argv) {
 //	for(int i = 0; i < (sizeX + 1) * (sizeY + 1) * (sizeZ + 1); i++)
 //		if(data[i] < isoValue) c++;
 //	printf("%d\n", c);
-	cl_float* data = loadFloatBlock("data/skull.raw", sizeX + 1);
+	float* dataSet = loadFloatBlock("data/skull.raw", sizeX + 1);
 //	cl_float4 *results1 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 15);
 //	cl_float4 *results2 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 5);
+//	cl_float4* output;
 
-//	runCL(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &vertices, &vbo, &count);
-	dispatch(data, isoValue, distance, sizeX, sizeY, sizeZ, &vbo, &vertices, &count);
+//	runCL(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &geometry, &vbo, &count);
+	dispatch(dataSet, isoValue, distance, sizeX, sizeY, sizeZ, &geometry, &count, FALSE);
+//	mcRunHost(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &output, &count);
 
-	for(int i = 0; i < count; i++)
-		printf("%d - %d (%dKB)\n", i, vertices[i]->size, vertices[i]->size * 16 / KB);
+//	mcdMemParts aux = malloc(sizeof(struct _mcdMemParts));
+//	aux->triangles = output;
+//	aux->size = count;
+//
+//	geometry = &aux;
+//	count = 1;
+
+	size_t sum = 0;
+	for(int i = 0; i < count; i++) {
+		printf("%d: %d (%dKB + %dKB)\n", i, geometry[i]->size,
+				geometry[i]->size * sizeof(cl_float4) / KB,
+				geometry[i]->size / 3 * sizeof(cl_float4) / KB);
+		sum += geometry[i]->size / 3 * 4;
+	}
+	printf("sum: %d (%dKB)\n", sum, sum * sizeof(cl_float4) / KB);
 
 
 //	printf("size: %i, isovalue: %.0f\n\n", size, isoValue);
@@ -289,8 +328,8 @@ int main(int argc, char** argv) {
 	// Turn the flow of control over to GLUT
 	glutMainLoop();
 
-	free(data);
-	free(vertices);
+	free(dataSet);
+	free(geometry);
 		
 	return 0;
 	

@@ -1,5 +1,5 @@
 /*
- * mcKernels.cl
+ * mc.cl
  *
  *  Created on: Oct 1, 2010
  *      Author: jonez
@@ -19,14 +19,14 @@
 #define OCCUPIED_VOXEL 1 // relevant voxel
 
 // get 1D position from 3D position
-size_t getPosition(const uint sX, const uint sY,
+inline size_t getPosition(const uint sX, const uint sY,
 				   const int x, const int y, const int z) {
 	
 	return (size_t)x + y * sX + z * sX * sY;
 }
 
 // get a single value from 3D data set 'values'
-float getValue(global float* values, const uint sX, const uint sY,
+inline float getValue(global float* values, const uint sX, const uint sY,
 			   const int x, const int y, const int z) {
 	
 	return values[x + y * sX + z * sX * sY];	
@@ -41,13 +41,13 @@ global float* getAddress(global float* values,
 }
 
 // classify all voxels created from 'values', using 'isoValue' as reference;
-// the output result is two arrays, 'results1' (integer) containing the number 
-// of vertices per voxel and 'results2' (boolean) which indicates if a voxel
-// is relevant (1) or not (0)
+// the output result is two float arrays, 'vVoxels' containing the number of 
+// vertices per voxel and 'oVoxels' which indicates if a voxel is relevant/
+// occupied (1) or not relevant/empty (0)
 kernel void mcClassification(global float* values, const float isoValue,
 							 //const float4 valuesDistances, const uint4 valuesOffset,
 							 constant uchar* tTable, constant uchar* vTable,
-							 global float* results1, global float* results2) {
+							 global float* vVoxels, global float* oVoxels) {
 	
 	// get coordinates
 	int x = get_global_id(0);
@@ -89,14 +89,12 @@ kernel void mcClassification(global float* values, const float isoValue,
 	
 	// output two arrays
 	uchar vertices = vTable[combination];
-	results1[position] = vertices;
-	results2[position] = (vertices > 0) ? OCCUPIED_VOXEL : EMPTY_VOXEL;
-//	results1[position] = corners[0];
-//	results2[position] = corners[7];
+	vVoxels[position] = vertices;
+	oVoxels[position] = (vertices > 0) ? OCCUPIED_VOXEL : EMPTY_VOXEL;
 	
 }
 
-// create an array only with relevant data
+// create an array with relevant data only (occupied voxels)
 kernel void mcCompaction(global float* values, global float* scannedValues,
 						 /*const size_t size, */global size_t* result) {
 	
@@ -109,7 +107,8 @@ kernel void mcCompaction(global float* values, global float* scannedValues,
 	
 }
 
-int4 getCoordinates(const size_t position, const uint2 sizes) {
+// get 3D coordinates from 1D position
+inline int4 getCoordinates(const size_t position, const uint2 sizes) {
 	
 	int4 coordinates;
 	int area = sizes.x * sizes.y;
@@ -123,14 +122,14 @@ int4 getCoordinates(const size_t position, const uint2 sizes) {
 }
 
 // cumpute linear interpolation of two vertices
-float4 vertexInterpolation(float iso, float4 v1, float4 v2) {
+inline float4 vertexInterpolation(float iso, float4 v1, float4 v2) {
 
 	float r = (iso - v1.w) / (v2.w - v1.w);
 	return mix(v1, v2, r);
 
 }
 
-//float4 triangleNormal(float4 v1, float4 v2, float4 v3) {
+//inline float4 triangleNormal(float4 v1, float4 v2, float4 v3) {
 //	
 //	float4 e1 = v2 - v1;
 //	float4 e2 = v3 - v1;
@@ -139,8 +138,8 @@ float4 vertexInterpolation(float iso, float4 v1, float4 v2) {
 //	
 //}
 
-// computes normal vector of triangle 't'
-float4 triangleNormal(float4* t) {
+// compute normal vector of triangle 't'
+inline float4 triangleNormal(float4* t) {
 	
 	float4 e1 = t[1] - t[0];
 	float4 e2 = t[2] - t[0];
@@ -150,14 +149,14 @@ float4 triangleNormal(float4* t) {
 }
 
 // classify all voxels created from 'values', using 'isoValue' as reference;
-// the output result is two arrays, 'results1' (float4) containing all iso- 
-// surface vertices in groups of 3 and 'results2' (float4) containing normal
-// vectors for each triangle
+// the output result is two arrays, 'tOutput' (float4) containing all iso- 
+// surface vertices in groups of 3 (a triangle) and 'nOutput' (float4)
+// containing a normal vector for each triangle (or 3 vertices)
 kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 						 float4 valuesDistance, int4 valuesOffset,
 						 constant uchar* tTable, constant uchar* vTable,
 						 global float* scanned, global size_t* compacted,
-						 global float4* results1/*, global float4* results2*/) {
+						 global float4* tOutput, global float4* nOutput) {
 	
 	size_t position = get_global_id(0);
 	size_t rawPosition = compacted[position];
@@ -232,36 +231,38 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 	
 	size_t basePosition = scanned[rawPosition];
 
-	for(uint v = 0; v < voxelVertices; v += TRIANGLE_VERTICES) {
+	for(uint v = 0, n = 0; v < voxelVertices; v += TRIANGLE_VERTICES, n++) {
 	
-		size_t vertexPosition = basePosition + v;
-		uchar triangleEdges[3] = {edges[v], edges[v + 1], edges[v + 2]}; // debug purposes
-		float4 triangle[3] = {vertices[triangleEdges[0]], vertices[triangleEdges[1]], vertices[triangleEdges[2]]}; // debug purposes
-//		float4 triangle[3] = {vertices[edges[v]], vertices[edges[v + 1]], vertices[edges[v + 2]]};
+		size_t trianglePosition = basePosition + v;
+		size_t normalPosition = (basePosition / TRIANGLE_VERTICES) + n;
+		
+//		uchar triangleEdges[3] = {edges[v], edges[v + 1], edges[v + 2]}; // debug purposes
+//		float4 triangle[3] = {vertices[triangleEdges[0]], vertices[triangleEdges[1]], vertices[triangleEdges[2]]}; // debug purposes
+		float4 triangle[3] = {vertices[edges[v]], vertices[edges[v + 1]], vertices[edges[v + 2]]};
 	
 //		triangle[0].w = triangleEdges[0]; // debug purposes
-		triangle[0].w = vertexPosition; // debug purposes
-		results1[vertexPosition] = triangle[0];
+//		triangle[0].w = trianglePosition; // debug purposes
+		tOutput[trianglePosition] = triangle[0];
 		
 //		triangle[1].w = triangleEdges[1]; // debug purposes
-		triangle[1].w = combination; // debug purposes
-		results1[vertexPosition + 1] = triangle[1];
+//		triangle[1].w = combination; // debug purposes
+		tOutput[trianglePosition + 1] = triangle[1];
 		
 //		triangle[2].w = triangleEdges[2]; // debug purposes
-		triangle[2].w = 1; // debug purposes
-		results1[vertexPosition + 2] = triangle[2];
+//		triangle[2].w = 1; // debug purposes
+		tOutput[trianglePosition + 2] = triangle[2];
 		
-//		results1[vertexPosition] = (float4)(v); // debug purposes
-//		results1[vertexPosition + 1] = (float4)(v+1); // debug purposes
-//		results1[vertexPosition + 2] = (float4)(v+2); // debug purposes
+//		tOutput[trianglePosition] = (float4)(v); // debug purposes
+//		tOutput[trianglePosition + 1] = (float4)(v+1); // debug purposes
+//		tOutput[trianglePosition + 2] = (float4)(v+2); // debug purposes
 	
-//		results2[basePosition + n] = triangleNormal(triangle);
-//		results2[basePosition + n] = triangleNormal(triangle[0], triangle[1], triangle[2]);
+		nOutput[normalPosition] = triangleNormal(triangle);
+//		nOutput[normalPosition] = triangleNormal(triangle[0], triangle[1], triangle[2]);
 	}
 	
-//	results1[get_global_id(0)].x = x;
-//	results1[get_global_id(0)].y = y;
-//	results1[get_global_id(0)].z = z;
-//	results1[get_global_id(0)].w = scanned[rawPosition];
+//	tOutput[get_global_id(0)].x = x;
+//	tOutput[get_global_id(0)].y = y;
+//	tOutput[get_global_id(0)].z = z;
+//	tOutput[get_global_id(0)].w = scanned[rawPosition];
 	
 }

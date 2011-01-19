@@ -1,5 +1,5 @@
-#define TRUE 1
 #define FALSE 0
+#define TRUE !FALSE
 
 #define EXIT_ON_ERROR 0
 

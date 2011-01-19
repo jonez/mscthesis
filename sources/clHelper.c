@@ -515,13 +515,13 @@ GLuint clhCreateVBO(GLsizei size) {
 
 }
 
-cl_mem clhBindNewCLBufferToVBO(cl_context context, size_t size, GLuint* vbo,
+cl_mem clhBindNewCLBufferToVBO(cl_context context, size_t size, GLuint vbo,
 							   cl_int* err) {
 
 	cl_int		retErr;
 	cl_mem		vboBuffer;
 
-	vboBuffer = clCreateFromGLBuffer(context, CL_MEM_READ_WRITE, *vbo, &retErr);
+	vboBuffer = clCreateFromGLBuffer(context, CL_MEM_READ_WRITE, vbo, &retErr);
 	if(retErr || CLH_VERBOSE)
 		clhErrorInfo(retErr, "binding new CL buffer to VBO", "clHelper");
 
@@ -541,9 +541,10 @@ cl_mem clhCreateGLCLBuffer(const cl_context context, const size_t size,
 
 	retVBO = clhCreateVBO(size);
 
-	buffer = clhBindNewCLBufferToVBO(context, size, &retVBO, &retErr);
+	buffer = clhBindNewCLBufferToVBO(context, size, retVBO, &retErr);
 
 	if(err) *err = retErr;
+	if(vbo) *vbo = retVBO;
 
 	return buffer;
 

@@ -31,13 +31,13 @@ void mcdSetVerbose(const int state) {
 ////////////////////////////////////////////////////////////////////////////////
 
 
-int dispatch(cl_float* input, cl_float isoValue, cl_float4 valuesDistance,
+int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
 			 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
-			 GLuint* vbo, mcdMemParts** output, size_t* outSize) {
+			 mcdMemParts** output, size_t* outSize, int useHost) {
 
-	cl_int err;
+//	int err;
 
-	int steps = 64;
+	int steps = 32;
 	size_t stackSize = inSizeZ;
 	size_t stepSize = (inSizeX + 1) * (inSizeY + 1);
 //	size_t memSize = (steps + 1) * stepSize * sizeof(cl_float);
@@ -64,8 +64,12 @@ int dispatch(cl_float* input, cl_float isoValue, cl_float4 valuesDistance,
 //				classificationKernel, compactionKernel, generationKernel);
 //		printf("%d-%.0f\n", s * stepSize, input[s * stepSize]);
 
-		mcRunCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
-				valuesDistance, offset, &part->data, vbo, &part->size);
+		if(useHost)
+			mcHost(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
+					valuesDistance, offset, &part->triangles, &part->normals, &part->size);
+		else
+			mcCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
+					valuesDistance, offset, &part->triangles, &part->normals, &part->size);
 
 		parts[count] = part;
 
@@ -73,7 +77,7 @@ int dispatch(cl_float* input, cl_float isoValue, cl_float4 valuesDistance,
 
 	}
 
-	mcReleaseCL();
+	if(!useHost) mcReleaseCL();
 
 	*output = parts;
 	*outSize = count;
@@ -85,5 +89,4 @@ int dispatch(cl_float* input, cl_float isoValue, cl_float4 valuesDistance,
 //	}
 
 	return 0;
-
 }
