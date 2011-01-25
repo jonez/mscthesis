@@ -10,6 +10,7 @@
 
 #include <CL/cl.h>
 #include <GL/gl.h>
+#include "CL/cl_gl.h"
 
 
 #define OPENCL_COMPILER_OPTIONS "-Wall"

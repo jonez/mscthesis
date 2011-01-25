@@ -77,32 +77,34 @@ void draw(void) {
 		glPushMatrix();
 			glTranslatef(-(float)sizeX / 2, -(float)sizeY / 2, -(float)sizeZ / 2);
 
-			for(int i = 0; i < count; i++)
-				for(size_t v = 0, n = 0; v < geometry[i]->size; v += 3, n++) {
+			for(int i = 0; i < count; i++) {
+//				for(size_t v = 0, n = 0; v < geometry[i]->size; v += 3, n++) {
 //					printf("%.2f", vertices[i]->data[j].s[0]);
 //					printf(" %.2f", vertices[i]->data[j].s[1]);
 //					printf(" %.2f\n", vertices[i]->data[j].s[2]);
 //					fflush(NULL);
 
 //					glBegin(GL_LINE_LOOP);
-					glBegin(GL_TRIANGLES);
-						glNormal3f(geometry[i]->normals[n].s[0], geometry[i]->normals[n].s[1], geometry[i]->normals[n].s[2]);
-						glVertex3f(geometry[i]->triangles[v].s[0], geometry[i]->triangles[v].s[1], geometry[i]->triangles[v].s[2]);
-						glVertex3f(geometry[i]->triangles[v + 1].s[0], geometry[i]->triangles[v + 1].s[1], geometry[i]->triangles[v + 1].s[2]);
-						glVertex3f(geometry[i]->triangles[v + 2].s[0], geometry[i]->triangles[v + 2].s[1], geometry[i]->triangles[v + 2].s[2]);
-					glEnd();
+//					glBegin(GL_TRIANGLES);
+//						glNormal3f(geometry[i]->normals[n].s[0], geometry[i]->normals[n].s[1], geometry[i]->normals[n].s[2]);
+//						glVertex3f(geometry[i]->triangles[v].s[0], geometry[i]->triangles[v].s[1], geometry[i]->triangles[v].s[2]);
+//						glVertex3f(geometry[i]->triangles[v + 1].s[0], geometry[i]->triangles[v + 1].s[1], geometry[i]->triangles[v + 1].s[2]);
+//						glVertex3f(geometry[i]->triangles[v + 2].s[0], geometry[i]->triangles[v + 2].s[1], geometry[i]->triangles[v + 2].s[2]);
+//					glEnd();
 
-//					glBindBuffer(GL_ARRAY_BUFFER, geometry[i]->trianglesVBO);
-//					glVertexPointer(3, GL_FLOAT, 4, 0);
-//
-//					glEnableClientState(GL_VERTEX_ARRAY);
-//
+					glBindBuffer(GL_ARRAY_BUFFER, geometry[i]->trianglesVBO);
+					glVertexPointer(4, GL_FLOAT, 0, 0);
+
+					glEnableClientState(GL_VERTEX_ARRAY);
+
 //					glDrawArrays(GL_TRIANGLES, 0, geometry[i]->size);
-//
-//					glDisableClientState(GL_VERTEX_ARRAY);
+					glDrawArrays(GL_POINTS, 0, geometry[i]->size);
 
-				}
+					glDisableClientState(GL_VERTEX_ARRAY);
 
+//				}
+
+			}
 
 		glPopMatrix();
 
@@ -146,10 +148,10 @@ void keyboard(unsigned char key, int x, int y) {
 		xValue--;
 		break;
 	case 119:			// + key
-		yValue++;
+		yValue--;
 		break;
 	case 122:			// - key
-		yValue--;
+		yValue++;
 		break;
 	case 43:			// q key
 		zValue++;
@@ -212,7 +214,7 @@ void initGL(int argc, char** argv) {
 	if(!glewIsSupported("GL_VERSION_2_0 GL_ARB_vertex_buffer_object"))
 		fprintf(stderr, "VBOs not supported.\n");
 
-	glLight();
+//	glLight();
 
 	// Register callbacks:
 	glutDisplayFunc(display);
@@ -235,10 +237,10 @@ int main(int argc, char** argv) {
 	sizeY = 255;
 	sizeZ = 255;
 
-	cl_float isoValue = 100;
+	cl_float isoValue = 50;
 
 	cl_float4 distance = {{1.0f, 1.0f, 1.0f, 0.0f}};
-	cl_int4 offset = {{0, 0, 0, 0}};
+//	cl_int4 offset = {{0, 0, 0, 0}};
 
 //	cl_float* data = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
 

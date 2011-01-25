@@ -16,7 +16,7 @@
 #include <string.h>
 #include <GL/glx.h>
 //#include <GL/glext.h>
-#include <CL/cl_gl.h>
+//#include <CL/cl_gl.h>
 
 #include "common.h"
 

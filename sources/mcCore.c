@@ -17,10 +17,9 @@
 
 #include "common.h"
 #include "utilities.h"
-#include "mcTables.h"
 #include "clHelper.h"
+#include "mcTables.h"
 #include "clScan.h"
-#include "CL/cl_gl.h"
 
 
 #define KERNELS_SOURCE_FILE "mc.cl"
@@ -68,7 +67,8 @@ cl_mem verticesTableBuffer;
 int mcCL(cl_float* dataSet, cl_float isoValue,
 		 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
 		 cl_float4 valuesDistance, cl_int4 valuesOffset,
-		 cl_float4** triangles, cl_float4** normals, size_t* outSize/*,
+//		 cl_float4** triangles, cl_float4** normals, size_t* outSize/*,
+		 GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
 		 clhResources resources, cl_program program,
 		 cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
 		 cl_kernel classificationKernel, cl_kernel compactionKernel,
@@ -325,17 +325,17 @@ int mcCL(cl_float* dataSet, cl_float isoValue,
 	//	printf("\n");
 
 		size_t trianglesBufferSize = verticeCount * sizeof(cl_float4);
-		cl_mem trianglesBuffer = clCreateBuffer(resources->context,
-				CL_MEM_READ_WRITE, trianglesBufferSize, NULL, &err);
-//		GLuint trianglesVBO;
-//		cl_mem trianglesBuffer = clhCreateGLCLBuffer(resources->context, trianglesBufferSize, &trianglesVBO, &err);
+//		cl_mem trianglesBuffer = clCreateBuffer(resources->context,
+//				CL_MEM_READ_WRITE, trianglesBufferSize, NULL, &err);
+		GLuint trianglesVBORet;
+		cl_mem trianglesBuffer = clhCreateGLCLBuffer(resources->context, trianglesBufferSize, &trianglesVBORet, &err);
 		clhErrorInfo(err, "create triangles buffer", "mcCore");
 
 		size_t normalsBufferSize = trianglesBufferSize / 3;
-		cl_mem normalsBuffer = clCreateBuffer(resources->context,
-				CL_MEM_READ_WRITE, normalsBufferSize, NULL, &err);
-//		GLuint normalsVBO;
-//		cl_mem normalsBuffer = clhCreateGLCLBuffer(resources->context, normalsBufferSize, &normalsVBO, &err);
+//		cl_mem normalsBuffer = clCreateBuffer(resources->context,
+//				CL_MEM_READ_WRITE, normalsBufferSize, NULL, &err);
+		GLuint normalsVBORet;
+		cl_mem normalsBuffer = clhCreateGLCLBuffer(resources->context, normalsBufferSize, &normalsVBORet, &err);
 		clhErrorInfo(err, "create normals buffer", "mcCore");
 
 
@@ -369,8 +369,9 @@ int mcCL(cl_float* dataSet, cl_float isoValue,
 				sizeof(cl_mem), &normalsBuffer);
 		clhErrorInfo(err, "set generation kernel arguments", "mcCore");
 
-	//    err = clEnqueueAcquireGLObjects(resources->cmdQueues[0], 1, &outputBuffer, 0, NULL, NULL);
-	//    clhErrorInfo(err, "aquire gl objects", "mcCore");
+	    err = clEnqueueAcquireGLObjects(resources->cmdQueues[0], 1, &trianglesBuffer, 0, NULL, NULL);
+	    err |= clEnqueueAcquireGLObjects(resources->cmdQueues[0], 1, &normalsBuffer, 0, NULL, NULL);
+	    clhErrorInfo(err, "aquire gl objects", "mcCore");
 
 		// Run the calculation by enqueuing it and forcing the
 		// command queue to complete the task
@@ -386,34 +387,37 @@ int mcCL(cl_float* dataSet, cl_float isoValue,
 		err = clWaitForEvents(1, &event);
 		clhErrorInfo(err, "wait for generation kernel", "mcCore");
 
-	//    err = clEnqueueReleaseGLObjects(resources->cmdQueues[0], 1, &outputBuffer, 0, NULL, NULL);
-	//    clhErrorInfo(err, "release gl objects", "mcCore");
+	    err = clEnqueueReleaseGLObjects(resources->cmdQueues[0], 1, &trianglesBuffer, 0, NULL, NULL);
+	    err |= clEnqueueReleaseGLObjects(resources->cmdQueues[0], 1, &normalsBuffer, 0, NULL, NULL);
+	    clhErrorInfo(err, "release gl objects", "mcCore");
 
 		// Once finished read back the results from the answer
 		// array into the results array
 		//### DEBUG ###
-		cl_float4* trianglesRet = malloc(trianglesBufferSize);
-		err = clEnqueueReadBuffer(resources->cmdQueues[0], trianglesBuffer,
-				CL_TRUE, 0, trianglesBufferSize, trianglesRet, 0, NULL, NULL);
-		clhErrorInfo(err, "read triangles buffer", "mcCore");
+//		cl_float4* trianglesRet = malloc(trianglesBufferSize);
+//		err = clEnqueueReadBuffer(resources->cmdQueues[0], trianglesBuffer,
+//				CL_TRUE, 0, trianglesBufferSize, trianglesRet, 0, NULL, NULL);
+//		clhErrorInfo(err, "read triangles buffer", "mcCore");
 //		for(int i = 0; i < 20; i++)
 //			printf("(%.2f;%.2f;%.2f;%.0f)", outputRet[i].s[0], outputRet[i].s[1], outputRet[i].s[2], outputRet[i].s[3]);
 //		printf("\n");
-		cl_float4* normalsRet = malloc(normalsBufferSize);
-		err = clEnqueueReadBuffer(resources->cmdQueues[0], normalsBuffer,
-				CL_TRUE, 0, normalsBufferSize, normalsRet, 0, NULL, NULL);
-		clhErrorInfo(err, "read normals buffer", "mcCore");
+//		cl_float4* normalsRet = malloc(normalsBufferSize);
+//		err = clEnqueueReadBuffer(resources->cmdQueues[0], normalsBuffer,
+//				CL_TRUE, 0, normalsBufferSize, normalsRet, 0, NULL, NULL);
+//		clhErrorInfo(err, "read normals buffer", "mcCore");
 
 		clFinish(resources->cmdQueues[0]);
 
 
 		clReleaseMemObject(scannedVerticesBuffer);
 		clReleaseMemObject(compactedInputBuffer);
-		clReleaseMemObject(trianglesBuffer);
-		clReleaseMemObject(normalsBuffer);
+//		clReleaseMemObject(trianglesBuffer);
+//		clReleaseMemObject(normalsBuffer);
 
-		if(triangles) *triangles = trianglesRet;
-		if(normals) *normals = normalsRet;
+//		if(triangles) *triangles = trianglesRet;
+//		if(normals) *normals = normalsRet;
+		if(trianglesVBO) *trianglesVBO = trianglesVBORet;
+		if(normalsVBO) *normalsVBO = normalsVBORet;
 		if(outSize) *outSize = verticeCount;
 
 		printf( "Memory allocation\n"
@@ -430,8 +434,10 @@ int mcCL(cl_float* dataSet, cl_float isoValue,
 
 	} else {
 
-		if(triangles) *triangles = NULL;
-		if(normals) *normals = NULL;
+//		if(triangles) *triangles = NULL;
+//		if(normals) *normals = NULL;
+		if(trianglesVBO) trianglesVBO = NULL;
+		if(normalsVBO) normalsVBO = NULL;
 		if(outSize) *outSize = 0;
 
 		printf(	"Memory allocation\n"

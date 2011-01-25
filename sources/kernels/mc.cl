@@ -125,7 +125,7 @@ inline int4 getCoordinates(const size_t position, const uint2 sizes) {
 inline float4 vertexInterpolation(float iso, float4 v1, float4 v2) {
 
 	float r = (iso - v1.w) / (v2.w - v1.w);
-	return mix(v1, v2, r);
+	return (float4)(mix(v1, v2, r).xyz, 1.0f);
 
 }
 
