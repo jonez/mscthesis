@@ -153,116 +153,121 @@ inline float4 triangleNormal(float4* t) {
 // surface vertices in groups of 3 (a triangle) and 'nOutput' (float4)
 // containing a normal vector for each triangle (or 3 vertices)
 kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
-						 float4 valuesDistance, int4 valuesOffset,
+						 float4 valuesDistance, int4 valuesOffset, uint count,
 						 constant uchar* tTable, constant uchar* vTable,
 						 global float* scanned, global size_t* compacted,
 						 global float4* tOutput, global float4* nOutput) {
 	
 	size_t position = get_global_id(0);
-	size_t rawPosition = compacted[position];
-	int4 coordinates = getCoordinates(rawPosition, sizes);
 	
-	// get kernel coordinates
-	int x = coordinates.x;
-	int y = coordinates.y;
-	int z = coordinates.z;
-	int xi = x + 1;
-	int yi = y + 1;
-	int zi = z + 1;
+	if(position < count) {
 	
-	// voxel coordinates in float data type
-	float xf = x + valuesOffset.x;
-	float yf = y + valuesOffset.y;
-	float zf = z + valuesOffset.z;
-	float xfi = xf + valuesDistance.x;
-	float yfi = yf + valuesDistance.y;
-	float zfi = zf + valuesDistance.z;
-	
-	// work-item and dataset sizes
-	uint sX = sizes.x;
-	uint sY = sizes.y;
-	uint siX = sX + 1;
-	uint siY = sY + 1;
-	
-	// coordinates and values of voxel vertices
-	float4 corners[8];
-	corners[0] = (float4)(xf,	yf,		zf,		getValue(values, siX, siY,	x,	y,	z	));
-	corners[1] = (float4)(xfi,	yf,		zf,		getValue(values, siX, siY,	xi,	y,	z	));
-	corners[2] = (float4)(xfi,	yfi,	zf,		getValue(values, siX, siY,	xi,	yi,	z	));
-	corners[3] = (float4)(xf,	yfi,	zf,		getValue(values, siX, siY,	x,	yi,	z	));
-	corners[4] = (float4)(xf,	yf,		zfi,	getValue(values, siX, siY,	x,	y,	zi	));
-	corners[5] = (float4)(xfi,	yf,		zfi,	getValue(values, siX, siY,	xi,	y,	zi	));
-	corners[6] = (float4)(xfi,	yfi,	zfi,	getValue(values, siX, siY,	xi,	yi,	zi	));
-	corners[7] = (float4)(xf,	yfi,	zfi,	getValue(values, siX, siY,	x,	yi,	zi	));
-	
-	// voxel index combination
-	uchar combination = 0;
-	combination = (uint)(corners[0].w < isoValue);
-	combination += (uint)(corners[1].w < isoValue) * 2;
-	combination += (uint)(corners[2].w < isoValue) * 4;
-	combination += (uint)(corners[3].w < isoValue) * 8;
-	combination += (uint)(corners[4].w < isoValue) * 16;
-	combination += (uint)(corners[5].w < isoValue) * 32;
-	combination += (uint)(corners[6].w < isoValue) * 64;
-	combination += (uint)(corners[7].w < isoValue) * 128;
-	
-	// vertices from voxel edges, even if the coordinates are located
-	// outside of edges
-	float4 vertices[12];
-	vertices[0] = vertexInterpolation(isoValue, corners[0], corners[1]);
-	vertices[1] = vertexInterpolation(isoValue, corners[1], corners[2]);
-	vertices[2] = vertexInterpolation(isoValue, corners[2], corners[3]);
-	vertices[3] = vertexInterpolation(isoValue, corners[3], corners[0]);
-	
-	vertices[4] = vertexInterpolation(isoValue, corners[4], corners[5]);
-	vertices[5] = vertexInterpolation(isoValue, corners[5], corners[6]);
-	vertices[6] = vertexInterpolation(isoValue, corners[6], corners[7]);
-	vertices[7] = vertexInterpolation(isoValue, corners[7], corners[4]);
-	
-	vertices[8] = vertexInterpolation(isoValue, corners[4], corners[0]);
-	vertices[9] = vertexInterpolation(isoValue, corners[1], corners[5]);
-	vertices[10] = vertexInterpolation(isoValue, corners[2], corners[6]);
-	vertices[11] = vertexInterpolation(isoValue, corners[3], corners[7]);
-	
-	// fill output data in form of triangles and their normal vector
-	// each iteration creates one triangle 
-	uint voxelVertices = vTable[combination];
-	constant uchar * edges = &tTable[combination * VOXEL_VERTICES]; // all edge values should be in private (or at least local) memory
-	
-	size_t basePosition = scanned[rawPosition];
-
-	for(uint v = 0, n = 0; v < voxelVertices; v += TRIANGLE_VERTICES, n++) {
-	
-		size_t trianglePosition = basePosition + v;
-		size_t normalPosition = (basePosition / TRIANGLE_VERTICES) + n;
+		size_t rawPosition = compacted[position];
+		int4 coordinates = getCoordinates(rawPosition, sizes);
 		
-//		uchar triangleEdges[3] = {edges[v], edges[v + 1], edges[v + 2]}; // debug purposes
-//		float4 triangle[3] = {vertices[triangleEdges[0]], vertices[triangleEdges[1]], vertices[triangleEdges[2]]}; // debug purposes
-		float4 triangle[3] = {vertices[edges[v]], vertices[edges[v + 1]], vertices[edges[v + 2]]};
+		// get kernel coordinates
+		int x = coordinates.x;
+		int y = coordinates.y;
+		int z = coordinates.z;
+		int xi = x + 1;
+		int yi = y + 1;
+		int zi = z + 1;
+		
+		// voxel coordinates in float data type
+		float xf = x + valuesOffset.x;
+		float yf = y + valuesOffset.y;
+		float zf = z + valuesOffset.z;
+		float xfi = xf + valuesDistance.x;
+		float yfi = yf + valuesDistance.y;
+		float zfi = zf + valuesDistance.z;
+		
+		// work-item and dataset sizes
+		uint sX = sizes.x;
+		uint sY = sizes.y;
+		uint siX = sX + 1;
+		uint siY = sY + 1;
+		
+		// coordinates and values of voxel vertices
+		float4 corners[8];
+		corners[0] = (float4)(xf,	yf,		zf,		getValue(values, siX, siY,	x,	y,	z	));
+		corners[1] = (float4)(xfi,	yf,		zf,		getValue(values, siX, siY,	xi,	y,	z	));
+		corners[2] = (float4)(xfi,	yfi,	zf,		getValue(values, siX, siY,	xi,	yi,	z	));
+		corners[3] = (float4)(xf,	yfi,	zf,		getValue(values, siX, siY,	x,	yi,	z	));
+		corners[4] = (float4)(xf,	yf,		zfi,	getValue(values, siX, siY,	x,	y,	zi	));
+		corners[5] = (float4)(xfi,	yf,		zfi,	getValue(values, siX, siY,	xi,	y,	zi	));
+		corners[6] = (float4)(xfi,	yfi,	zfi,	getValue(values, siX, siY,	xi,	yi,	zi	));
+		corners[7] = (float4)(xf,	yfi,	zfi,	getValue(values, siX, siY,	x,	yi,	zi	));
+		
+		// voxel index combination
+		uchar combination = 0;
+		combination = (uint)(corners[0].w < isoValue);
+		combination += (uint)(corners[1].w < isoValue) * 2;
+		combination += (uint)(corners[2].w < isoValue) * 4;
+		combination += (uint)(corners[3].w < isoValue) * 8;
+		combination += (uint)(corners[4].w < isoValue) * 16;
+		combination += (uint)(corners[5].w < isoValue) * 32;
+		combination += (uint)(corners[6].w < isoValue) * 64;
+		combination += (uint)(corners[7].w < isoValue) * 128;
+		
+		// vertices from voxel edges, even if the coordinates are located
+		// outside of edges
+		float4 vertices[12];
+		vertices[0] = vertexInterpolation(isoValue, corners[0], corners[1]);
+		vertices[1] = vertexInterpolation(isoValue, corners[1], corners[2]);
+		vertices[2] = vertexInterpolation(isoValue, corners[2], corners[3]);
+		vertices[3] = vertexInterpolation(isoValue, corners[3], corners[0]);
+		
+		vertices[4] = vertexInterpolation(isoValue, corners[4], corners[5]);
+		vertices[5] = vertexInterpolation(isoValue, corners[5], corners[6]);
+		vertices[6] = vertexInterpolation(isoValue, corners[6], corners[7]);
+		vertices[7] = vertexInterpolation(isoValue, corners[7], corners[4]);
+		
+		vertices[8] = vertexInterpolation(isoValue, corners[4], corners[0]);
+		vertices[9] = vertexInterpolation(isoValue, corners[1], corners[5]);
+		vertices[10] = vertexInterpolation(isoValue, corners[2], corners[6]);
+		vertices[11] = vertexInterpolation(isoValue, corners[3], corners[7]);
+		
+		// fill output data in form of triangles and their normal vector
+		// each iteration creates one triangle 
+		uint voxelVertices = vTable[combination];
+		constant uchar * edges = &tTable[combination * VOXEL_VERTICES]; // all edge values should be in private (or at least local) memory
+		
+		size_t basePosition = scanned[rawPosition];
 	
-//		triangle[0].w = triangleEdges[0]; // debug purposes
-//		triangle[0].w = trianglePosition; // debug purposes
-		tOutput[trianglePosition] = triangle[0];
+		for(uint v = 0, n = 0; v < voxelVertices; v += TRIANGLE_VERTICES, n++) {
 		
-//		triangle[1].w = triangleEdges[1]; // debug purposes
-//		triangle[1].w = combination; // debug purposes
-		tOutput[trianglePosition + 1] = triangle[1];
+			size_t trianglePosition = basePosition + v;
+			size_t normalPosition = (basePosition / TRIANGLE_VERTICES) + n;
+			
+	//		uchar triangleEdges[3] = {edges[v], edges[v + 1], edges[v + 2]}; // debug purposes
+	//		float4 triangle[3] = {vertices[triangleEdges[0]], vertices[triangleEdges[1]], vertices[triangleEdges[2]]}; // debug purposes
+			float4 triangle[3] = {vertices[edges[v]], vertices[edges[v + 1]], vertices[edges[v + 2]]};
 		
-//		triangle[2].w = triangleEdges[2]; // debug purposes
-//		triangle[2].w = 1; // debug purposes
-		tOutput[trianglePosition + 2] = triangle[2];
+	//		triangle[0].w = triangleEdges[0]; // debug purposes
+	//		triangle[0].w = trianglePosition; // debug purposes
+			tOutput[trianglePosition] = triangle[0];
+			
+	//		triangle[1].w = triangleEdges[1]; // debug purposes
+	//		triangle[1].w = combination; // debug purposes
+			tOutput[trianglePosition + 1] = triangle[1];
+			
+	//		triangle[2].w = triangleEdges[2]; // debug purposes
+	//		triangle[2].w = 1; // debug purposes
+			tOutput[trianglePosition + 2] = triangle[2];
+			
+	//		tOutput[trianglePosition] = (float4)(v); // debug purposes
+	//		tOutput[trianglePosition + 1] = (float4)(v+1); // debug purposes
+	//		tOutput[trianglePosition + 2] = (float4)(v+2); // debug purposes
 		
-//		tOutput[trianglePosition] = (float4)(v); // debug purposes
-//		tOutput[trianglePosition + 1] = (float4)(v+1); // debug purposes
-//		tOutput[trianglePosition + 2] = (float4)(v+2); // debug purposes
-	
-		nOutput[normalPosition] = triangleNormal(triangle);
-//		nOutput[normalPosition] = triangleNormal(triangle[0], triangle[1], triangle[2]);
+			nOutput[normalPosition] = triangleNormal(triangle);
+	//		nOutput[normalPosition] = triangleNormal(triangle[0], triangle[1], triangle[2]);
+		}
+		
+	//	tOutput[get_global_id(0)].x = x;
+	//	tOutput[get_global_id(0)].y = y;
+	//	tOutput[get_global_id(0)].z = z;
+	//	tOutput[get_global_id(0)].w = scanned[rawPosition];
+		
 	}
-	
-//	tOutput[get_global_id(0)].x = x;
-//	tOutput[get_global_id(0)].y = y;
-//	tOutput[get_global_id(0)].z = z;
-//	tOutput[get_global_id(0)].w = scanned[rawPosition];
 	
 }

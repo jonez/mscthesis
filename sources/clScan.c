@@ -699,7 +699,7 @@ cl_mem clsScanFromDevice(const clhResources resources, const int deviceIndex,
 	ComputeContext 		= resources->context;
 	ComputeDeviceId		= resources->devices[deviceIndex];
 	ComputeCommands		= resources->cmdQueues[deviceIndex];
-	GROUP_SIZE			= resources->wgSizes[deviceIndex];
+	GROUP_SIZE			= resources->wgSizes[deviceIndex] / 2;
 
 	if(!initialized) {
 

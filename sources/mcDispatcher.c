@@ -9,7 +9,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-//#include <math.h>
+#include <math.h>
 
 #include "common.h"
 #include "clHelper.h"
@@ -43,9 +43,10 @@ int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
 //	size_t memSize = (steps + 1) * stepSize * sizeof(cl_float);
 	size_t count = 0;
 
-//	size_t partsCount = ceil((double)stackSize / steps);
-	size_t partsCount = stackSize / steps;
-	if(stackSize % steps) partsCount++;
+	size_t partsCount = ceil((double)stackSize / steps);
+	// instead of ceil() from math.h
+//	size_t partsCount = stackSize / steps;
+//	if(stackSize % steps) partsCount++;
 	mcdMemParts* parts = calloc(partsCount, sizeof(mcdMemParts));
 
 	for(int s = 0; s < stackSize; s += steps, count++) {

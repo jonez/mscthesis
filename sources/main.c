@@ -275,7 +275,7 @@ int main(int argc, char** argv) {
 				geometry[i]->size / 3 * sizeof(cl_float4) / KB);
 		sum += geometry[i]->size / 3 * 4;
 	}
-	printf("sum: %d (%dKB)\n", sum, sum * sizeof(cl_float4) / KB);
+	printf("sum: %d (%dMB)\n", sum, sum * sizeof(cl_float4) / MB);
 
 
 //	printf("size: %i, isovalue: %.0f\n\n", size, isoValue);
