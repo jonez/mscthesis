@@ -5,9 +5,16 @@
  *      Author: jonez
  */
 
+#ifndef MCCORE_H_
+#define MCCORE_H_
+
+//#include <CL/cl.h>
+//#include <GL/gl.h>
+
 #include "clHelper.h"
 
-int mcCL(cl_float* dataSet, cl_float isoValue,
+
+int mccCL(cl_float* dataSet, cl_float isoValue,
 		 size_t sizeX, size_t sizeY, size_t sizeZ,
 		 cl_float4 valuesDistance, cl_int4 valuesOffset,
 //		 cl_float4** triangles, cl_float4** normals, size_t* outSize/*,
@@ -17,12 +24,15 @@ int mcCL(cl_float* dataSet, cl_float isoValue,
 		 cl_kernel classificationKernel, cl_kernel compactionKernel,
 		 cl_kernel generationKernel*/);
 
-void mcReleaseCL();
+void mccReleaseCL();
 
 
-int mcHost(cl_float* dataSet, cl_float isoValue,
+int mccHost(cl_float* dataSet, cl_float isoValue,
 		   size_t sizeX, size_t sizeY, size_t sizeZ,
 		   cl_float4 valuesDistance, cl_int4 valuesOffset,
 		   cl_float4** triangles, cl_float4** normals, size_t* outSize);
 
 //void test();
+
+
+#endif /* MCCORE_H_ */

@@ -12,7 +12,6 @@
 #include <math.h>
 
 #include "common.h"
-#include "clHelper.h"
 #include "mcCore.h"
 
 
@@ -31,7 +30,8 @@ void mcdSetVerbose(const int state) {
 ////////////////////////////////////////////////////////////////////////////////
 
 
-int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
+int dispatch(float* input, float isoValue, /* cl_float4 valuesDistance, */
+			 float valDistX, float valDistY, float valDistZ,
 			 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
 			 mcdMemParts** output, size_t* outSize, int useHost) {
 
@@ -42,6 +42,8 @@ int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
 	size_t stepSize = (inSizeX + 1) * (inSizeY + 1);
 //	size_t memSize = (steps + 1) * stepSize * sizeof(cl_float);
 	size_t count = 0;
+
+	cl_float4 valuesDistance = {{valDistX, valDistY, valDistZ, 0.0f}};
 
 	size_t partsCount = ceil((double)stackSize / steps);
 	// instead of ceil() from math.h
@@ -57,7 +59,7 @@ int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
 
 		cl_int4 offset = {{0, 0, s, 0}};
 
-		mcdMemParts part = malloc(sizeof(struct _mcdMemParts));
+		mcdMemParts part = malloc(sizeof(struct mcdMemParts));
 
 //		runCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
 //				valuesDistance, offset, &part->data, vbo, &part->size,
@@ -66,10 +68,10 @@ int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
 //		printf("%d-%.0f\n", s * stepSize, input[s * stepSize]);
 
 		if(useHost)
-			mcHost(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
+			mccHost(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
 					valuesDistance, offset, &part->triangles, &part->normals, &part->size);
 		else
-			mcCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
+			mccCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
 					valuesDistance, offset, &part->trianglesVBO, &part->normalsVBO, &part->size);
 
 		parts[count] = part;
@@ -78,7 +80,7 @@ int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
 
 	}
 
-	if(!useHost) mcReleaseCL();
+	if(!useHost) mccReleaseCL();
 
 	*output = parts;
 	*outSize = count;

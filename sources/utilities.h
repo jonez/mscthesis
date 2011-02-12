@@ -22,4 +22,4 @@ float* makeFloatBlock(const int sizeX, const int sizeY, const int sizeZ);
 float* loadFloatBlock(const char *path, const int size);
 
 
-#endif /* MCUTILITIES_H_ */
+#endif /* UTILITIES_H_ */

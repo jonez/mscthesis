@@ -5,15 +5,21 @@
  *      Author: jonez
  */
 
-#include "clHelper.h"
-#include "common.h"
+#ifndef MCDISPATCHER_H_
+#define MCDISPATCHER_H_
+
+#include <CL/cl.h>
+#include <GL/gl.h>
+
+//#include "clHelper.h"
+
 
 //struct _mcdMemParts {
 //	cl_float4*		data;
 //	size_t			size;
 //};
 
-struct _mcdMemParts {
+struct mcdMemParts {
 	cl_float4*		triangles;
 	cl_float4*		normals;
 	GLuint			trianglesVBO;
@@ -21,11 +27,23 @@ struct _mcdMemParts {
 	size_t			size;
 };
 
-typedef struct _mcdMemParts* mcdMemParts;
+typedef struct mcdMemParts* mcdMemParts;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int dispatch(float* input, float isoValue, cl_float4 valuesDistance,
-			 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
-			 mcdMemParts** output, size_t* outSize, int useHost);
+int dispatch(float*				/* inputDataSet */,
+			 float				/* isoValue */,
+//			 cl_float4			/* valuesDistance */,
+			 float				/* valuesDistanceX */,
+			 float				/* valuesDistanceY */,
+			 float				/* valuesDistanceZ */,
+			 size_t				/* valuesSizeX */,
+			 size_t				/* valuesSizeY */,
+			 size_t				/* valuesSizeZ */,
+			 mcdMemParts**		/* outputGeometry */,
+			 size_t* 			/* outputSize */,
+			 int				/* useHostToCompute */);
+
+
+#endif /* MCDISPATCHER_H_ */

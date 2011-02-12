@@ -5,8 +5,11 @@
  *      Author: jonez
  */
 
-#ifndef SCAN_H_
-#define SCAN_H_
+#ifndef CLSCAN_H_
+#define CLSCAN_H_
+
+//#include <CL/cl.h>
+//#include <GL/gl.h>
 
 #include "clHelper.h"
 
@@ -27,4 +30,4 @@ void clsRelease();
 //int testScan();
 
 
-#endif /* SCAN_H_ */
+#endif /* CLSCAN_H_ */

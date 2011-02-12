@@ -5,9 +5,10 @@
  *      Author: jonez
  *
  * Notes: * Use async calls with events.
- * 		  * When possible reuse resources like buffers, instead of creating one
- * 		  each run; most resources aren't being reused, most initialized them
- * 		  and them reuse them
+ * 		  * When possible reuse resources like buffers, instead of creating a
+ * 		  new one each run; most resources aren't being reused, the reused ones
+ * 		  most be initialized first and then reuse them until no longer needed,
+ *		  at that time they most be released.
  */
 
 #include "mcCore.h"
@@ -15,12 +16,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <CL/cl_gl.h>
 
 #include "common.h"
-#include "utilities.h"
-#include "clHelper.h"
 #include "mcTables.h"
+#include "clHelper.h"
 #include "clScan.h"
+//#include "utilities.h"
 
 
 #define KERNELS_SOURCE_FILE "mc.cl"
@@ -68,7 +70,7 @@ cl_mem verticesTableBuffer;
  *
  * Notes: ? - add option to keep output result in memory device
  */
-int mcCL(cl_float* dataSet, cl_float isoValue,
+int mccCL(cl_float* dataSet, cl_float isoValue,
 		 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
 		 cl_float4 valuesDistance, cl_int4 valuesOffset,
 //		 cl_float4** triangles, cl_float4** normals, size_t* outSize/*,
@@ -496,7 +498,7 @@ int mcCL(cl_float* dataSet, cl_float isoValue,
 	return CL_SUCCESS;
 }
 
-void mcReleaseCL() {
+void mccReleaseCL() {
 
 	initialized = FALSE;
 
@@ -568,7 +570,7 @@ inline static cl_float4 triangleNormal(cl_float4* t) {
 
 }
 
-int mcHost(cl_float* dataSet, cl_float isoValue,
+int mccHost(cl_float* dataSet, cl_float isoValue,
 		   size_t inSizeX, size_t inSizeY, size_t inSizeZ,
 		   cl_float4 valuesDistance, cl_int4 valuesOffset,
 		   cl_float4** triangles, cl_float4** normals, size_t* outSize) {

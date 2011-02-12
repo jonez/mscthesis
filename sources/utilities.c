@@ -8,10 +8,10 @@
  * 			better portability.
  */
 
+#include "utilities.h"
+
 #include <stdlib.h>
 #include <stdio.h>
-
-#include "utilities.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 

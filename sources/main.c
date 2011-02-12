@@ -5,6 +5,7 @@
  *      Author: jonez
  */
 
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -17,15 +18,12 @@
 #include <GL/glut.h>
 #endif
 
-
 #include "common.h"
 #include "utilities.h"
-
-#include "mcCore.h"
-#include "clScan.h"
-#include "clHelper.h"
-
 #include "mcDispatcher.h"
+
+#include "clHelper.h"
+#include "clScan.h"
 
 int xValue = 0;
 int yValue = 0;
@@ -236,10 +234,12 @@ int main(int argc, char** argv) {
 	sizeX = 255;
 	sizeY = 255;
 	sizeZ = 255;
+	float distanceX = 1.0f;
+	float distanceY = 1.0f;
+	float distanceZ = 1.0f;
 
-	cl_float isoValue = 50;
+	float isoValue = 50;
 
-	cl_float4 distance = {{1.0f, 1.0f, 1.0f, 0.0f}};
 //	cl_int4 offset = {{0, 0, 0, 0}};
 
 //	cl_float* data = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
@@ -258,7 +258,8 @@ int main(int argc, char** argv) {
 //	cl_float4* output;
 
 //	runCL(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &geometry, &vbo, &count);
-	dispatch(dataSet, isoValue, distance, sizeX, sizeY, sizeZ, &geometry, &count, FALSE);
+	dispatch(dataSet, isoValue, distanceX, distanceY, distanceZ,
+			sizeX, sizeY, sizeZ, &geometry, &count, FALSE);
 //	mcRunHost(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &output, &count);
 
 //	mcdMemParts aux = malloc(sizeof(struct _mcdMemParts));

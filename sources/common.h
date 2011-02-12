@@ -1,3 +1,13 @@
+/*
+ * common.h
+ *
+ *  Created on: Oct 1, 2010
+ *      Author: jonez
+ */
+
+#ifndef COMMON_H_
+#define COMMON_H_
+
 #define FALSE 0
 #define TRUE !FALSE
 
@@ -12,3 +22,6 @@
 #define BIG_STRING_SIZE 102400 // 1024B * 100 = 100KB
 
 #define KERNELS_PATH "sources/kernels/"
+
+
+#endif /* COMMON_H_ */

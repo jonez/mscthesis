@@ -4,19 +4,17 @@
  *  Created on: Oct 1, 2010
  *      Author: jonez
  */
-#include <GL/glew.h>
 
+#include <GL/glew.h> // should be included before GL/gl.h
 #include "clHelper.h"
-
-// use with #include <GL/glext.h>
-//#define GL_GLEXT_PROTOTYPES
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <GL/glx.h>
+#include <CL/cl_gl.h>
+#include <GL/glx.h> //a pig é a maior
 //#include <GL/glext.h>
-//#include <CL/cl_gl.h>
+//#define GL_GLEXT_PROTOTYPES // use with #include <GL/glext.h>
 
 #include "common.h"
 

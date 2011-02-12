@@ -55,13 +55,12 @@
  
 #include "clScan.h"
 
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
 #include <math.h>
 
 #include "common.h"
-#include "utilities.h"
  
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
