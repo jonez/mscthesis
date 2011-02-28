@@ -84,10 +84,10 @@ float* makeFloatBlock(const int sizeX, const int sizeY, const int sizeZ) {
 	return block;
 }
 
-float* loadFloatBlock(const char *path, const int size) {
+float* loadFloatBlock(const char *path, const int szX, const int szY, const int szZ) {
 
 	FILE* fd;
-	long fz = size * size * size;
+	long fz = szX * szY * szZ;
 	float* data;
 
 	// open file for reading

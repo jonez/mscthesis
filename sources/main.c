@@ -27,9 +27,9 @@
 
 int xValue = 0;
 int yValue = 0;
-int zValue = 350;
+int zValue = 300;
 
-GLuint vbo;
+//GLuint vbo;
 //cl_float4 *vertices, *normals;
 size_t count, sizeX, sizeY, sizeZ;
 mcdMemParts* geometry;
@@ -62,7 +62,7 @@ void reshape(int w, int h) {
 
 void draw(void) {
 
-	glColor3f(1.0, 1.0, 1.0);
+	glColor3f(1.0f, 1.0f, 1.0f);
 
 	glPushMatrix();
 
@@ -92,13 +92,17 @@ void draw(void) {
 
 					glBindBuffer(GL_ARRAY_BUFFER, geometry[i]->trianglesVBO);
 					glVertexPointer(4, GL_FLOAT, 0, 0);
-
 					glEnableClientState(GL_VERTEX_ARRAY);
 
-//					glDrawArrays(GL_TRIANGLES, 0, geometry[i]->size);
-					glDrawArrays(GL_POINTS, 0, geometry[i]->size);
+					glBindBuffer(GL_ARRAY_BUFFER, geometry[i]->normalsVBO);
+					glNormalPointer(GL_FLOAT, sizeof(float)*4, 0);
+					glEnableClientState(GL_NORMAL_ARRAY);
+
+					glDrawArrays(GL_TRIANGLES, 0, geometry[i]->size);
+//					glDrawArrays(GL_POINTS, 0, geometry[i]->size);
 
 					glDisableClientState(GL_VERTEX_ARRAY);
+					glDisableClientState(GL_NORMAL_ARRAY);
 
 //				}
 
@@ -118,7 +122,7 @@ void draw(void) {
 void display(void) {
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glColor3f(1.0, 1.0, 1.0);
+//	glColor3f(1.0, 1.0, 1.0);
 	glLoadIdentity();
 
 	gluLookAt(xValue, yValue, zValue,
@@ -212,7 +216,7 @@ void initGL(int argc, char** argv) {
 	if(!glewIsSupported("GL_VERSION_2_0 GL_ARB_vertex_buffer_object"))
 		fprintf(stderr, "VBOs not supported.\n");
 
-//	glLight();
+	glLight();
 
 	// Register callbacks:
 	glutDisplayFunc(display);
@@ -238,7 +242,7 @@ int main(int argc, char** argv) {
 	float distanceY = 1.0f;
 	float distanceZ = 1.0f;
 
-	float isoValue = 50;
+	float isoValue = 80;
 
 //	cl_int4 offset = {{0, 0, 0, 0}};
 
@@ -252,7 +256,8 @@ int main(int argc, char** argv) {
 //	for(int i = 0; i < (sizeX + 1) * (sizeY + 1) * (sizeZ + 1); i++)
 //		if(data[i] < isoValue) c++;
 //	printf("%d\n", c);
-	float* dataSet = loadFloatBlock("data/skull.raw", sizeX + 1);
+	float* dataSet = loadFloatBlock("data/aneurism.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+//	float* dataSet = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
 //	cl_float4 *results1 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 15);
 //	cl_float4 *results2 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 5);
 //	cl_float4* output;
@@ -271,10 +276,11 @@ int main(int argc, char** argv) {
 
 	size_t sum = 0;
 	for(int i = 0; i < count; i++) {
-		printf("%d: %d (%dKB + %dKB)\n", i, geometry[i]->size,
-				geometry[i]->size * sizeof(cl_float4) / KB,
-				geometry[i]->size / 3 * sizeof(cl_float4) / KB);
-		sum += geometry[i]->size / 3 * 4;
+		printf("%d: %d (%dKB [%d] + %dKB [%d])\n",
+				i, geometry[i]->size,
+				geometry[i]->size * sizeof(cl_float4) / KB, geometry[i]->trianglesVBO,
+				geometry[i]->size * sizeof(cl_float4) / KB, geometry[i]->normalsVBO);
+		sum += geometry[i]->size * 2;
 	}
 	printf("sum: %d (%dMB)\n", sum, sum * sizeof(cl_float4) / MB);
 

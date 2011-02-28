@@ -72,7 +72,8 @@ int dispatch(float* input, float isoValue, /* cl_float4 valuesDistance, */
 					valuesDistance, offset, &part->triangles, &part->normals, &part->size);
 		else
 			mccCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
-					valuesDistance, offset, &part->trianglesVBO, &part->normalsVBO, &part->size);
+					valuesDistance, offset, &part->triangles, &part->normals,
+					&part->trianglesVBO, &part->normalsVBO, &part->size);
 
 		parts[count] = part;
 

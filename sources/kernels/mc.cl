@@ -148,11 +148,32 @@ inline float4 triangleNormal(float4* t) {
 	
 }
 
+inline float4 vertexNormal(global float* val, uint2 sz, int4 pos) {
+	
+	float4 n;
+	
+//	if(pos.x == 0 || pos.x == sz.x - 1 || pos.y == 0 || pos.y == sz.y - 1 || pos.z == 0 || pos.z == sz.y - 1) 
+//		n = (float4)(1, 1, 1, getValue(val, sz.x, sz.y, pos.x, pos.y, pos.z));
+//	else {
+		n.x = getValue(val, sz.x, sz.y, pos.x + 1, pos.y, pos.z) -
+				getValue(val, sz.x, sz.y, pos.x - 1, pos.y, pos.z);
+		n.y = getValue(val, sz.x, sz.y, pos.x, pos.y + 1, pos.z) -
+				getValue(val, sz.x, sz.y, pos.x, pos.y - 1, pos.z);
+		n.z = getValue(val, sz.x, sz.y, pos.x, pos.y, pos.z + 1) -
+				getValue(val, sz.x, sz.y, pos.x, pos.y, pos.z - 1);
+		n.w = 0;
+//	}
+	
+//	return (float4)(1, 0, 0, getValue(val, sz.x, sz.y, pos.x, pos.y, pos.z));
+	return (float4)(-normalize(n).xyz, getValue(val, sz.x, sz.y, pos.x, pos.y, pos.z));
+	
+}
+
 // classify all voxels created from 'values', using 'isoValue' as reference;
 // the output result is two arrays, 'tOutput' (float4) containing all iso- 
 // surface vertices in groups of 3 (a triangle) and 'nOutput' (float4)
 // containing a normal vector for each triangle (or 3 vertices)
-kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
+kernel void mcGeneration(global float* values, uint2 size, float isoValue,
 						 float4 valuesDistance, int4 valuesOffset, uint count,
 						 constant uchar* tTable, constant uchar* vTable,
 						 global float* scanned, global size_t* compacted,
@@ -163,7 +184,7 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 	if(position < count) {
 	
 		size_t rawPosition = compacted[position];
-		int4 coordinates = getCoordinates(rawPosition, sizes);
+		int4 coordinates = getCoordinates(rawPosition, size);
 		
 		// get kernel coordinates
 		int x = coordinates.x;
@@ -182,8 +203,8 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 		float zfi = zf + valuesDistance.z;
 		
 		// work-item and dataset sizes
-		uint sX = sizes.x;
-		uint sY = sizes.y;
+		uint sX = size.x;
+		uint sY = size.y;
 		uint siX = sX + 1;
 		uint siY = sY + 1;
 		
@@ -197,6 +218,16 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 		corners[5] = (float4)(xfi,	yf,		zfi,	getValue(values, siX, siY,	xi,	y,	zi	));
 		corners[6] = (float4)(xfi,	yfi,	zfi,	getValue(values, siX, siY,	xi,	yi,	zi	));
 		corners[7] = (float4)(xf,	yfi,	zfi,	getValue(values, siX, siY,	x,	yi,	zi	));
+		
+		float4 cornersNormal[8];
+		cornersNormal[0] = vertexNormal(values, (uint2)(siX, siY), (int4)(x,	y,	z,	0));
+		cornersNormal[1] = vertexNormal(values, (uint2)(siX, siY), (int4)(xi,	y,	z,	0));
+		cornersNormal[2] = vertexNormal(values, (uint2)(siX, siY), (int4)(xi,	yi,	z,	0));
+		cornersNormal[3] = vertexNormal(values, (uint2)(siX, siY), (int4)(x,	yi,	z,	0));
+		cornersNormal[4] = vertexNormal(values, (uint2)(siX, siY), (int4)(x,	y,	zi,	0));
+		cornersNormal[5] = vertexNormal(values, (uint2)(siX, siY), (int4)(xi,	y,	zi,	0));
+		cornersNormal[6] = vertexNormal(values, (uint2)(siX, siY), (int4)(xi,	yi,	zi,	0));
+		cornersNormal[7] = vertexNormal(values, (uint2)(siX, siY), (int4)(x,	yi,	zi,	0));
 		
 		// voxel index combination
 		uchar combination = 0;
@@ -227,6 +258,22 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 		vertices[10] = vertexInterpolation(isoValue, corners[2], corners[6]);
 		vertices[11] = vertexInterpolation(isoValue, corners[3], corners[7]);
 		
+		float4 verticesNormal[12];
+		verticesNormal[0] = vertexInterpolation(isoValue, cornersNormal[0], cornersNormal[1]);
+		verticesNormal[1] = vertexInterpolation(isoValue, cornersNormal[1], cornersNormal[2]);
+		verticesNormal[2] = vertexInterpolation(isoValue, cornersNormal[2], cornersNormal[3]);
+		verticesNormal[3] = vertexInterpolation(isoValue, cornersNormal[3], cornersNormal[0]);
+
+		verticesNormal[4] = vertexInterpolation(isoValue, cornersNormal[4], cornersNormal[5]);
+		verticesNormal[5] = vertexInterpolation(isoValue, cornersNormal[5], cornersNormal[6]);
+		verticesNormal[6] = vertexInterpolation(isoValue, cornersNormal[6], cornersNormal[7]);
+		verticesNormal[7] = vertexInterpolation(isoValue, cornersNormal[7], cornersNormal[4]);
+
+		verticesNormal[8] = vertexInterpolation(isoValue, cornersNormal[4], cornersNormal[0]);
+		verticesNormal[9] = vertexInterpolation(isoValue, cornersNormal[1], cornersNormal[5]);
+		verticesNormal[10] = vertexInterpolation(isoValue, cornersNormal[2], cornersNormal[6]);
+		verticesNormal[11] = vertexInterpolation(isoValue, cornersNormal[3], cornersNormal[7]);
+		
 		// fill output data in form of triangles and their normal vector
 		// each iteration creates one triangle 
 		uint voxelVertices = vTable[combination];
@@ -246,20 +293,23 @@ kernel void mcGeneration(global float* values, uint2 sizes, float isoValue,
 	//		triangle[0].w = triangleEdges[0]; // debug purposes
 	//		triangle[0].w = trianglePosition; // debug purposes
 			tOutput[trianglePosition] = triangle[0];
+			nOutput[trianglePosition] = verticesNormal[edges[v]];
 			
 	//		triangle[1].w = triangleEdges[1]; // debug purposes
 	//		triangle[1].w = combination; // debug purposes
 			tOutput[trianglePosition + 1] = triangle[1];
+			nOutput[trianglePosition + 1] = verticesNormal[edges[v + 1]];
 			
 	//		triangle[2].w = triangleEdges[2]; // debug purposes
 	//		triangle[2].w = 1; // debug purposes
 			tOutput[trianglePosition + 2] = triangle[2];
+			nOutput[trianglePosition + 2] = verticesNormal[edges[v + 2]];
 			
 	//		tOutput[trianglePosition] = (float4)(v); // debug purposes
 	//		tOutput[trianglePosition + 1] = (float4)(v+1); // debug purposes
 	//		tOutput[trianglePosition + 2] = (float4)(v+2); // debug purposes
 		
-			nOutput[normalPosition] = triangleNormal(triangle);
+//			nOutput[normalPosition] = triangleNormal(triangle);
 	//		nOutput[normalPosition] = triangleNormal(triangle[0], triangle[1], triangle[2]);
 		}
 		

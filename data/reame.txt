@@ -1,0 +1,4 @@
+aneurism.raw : 256 * 256 * 256 @ int 8bit
+engine.raw : 256 * 256 * 128 @ int 8bit
+sin.raw : 41 * 41 * 41 @ int 8bit
+skull.raw : 256 * 256 * 256 @ int 8bit

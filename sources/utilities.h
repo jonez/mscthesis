@@ -19,7 +19,7 @@ int *makeIntArray(int size);
 int *makeIntMatrix(int size);
 //float *makeFloatBlock(int size);
 float* makeFloatBlock(const int sizeX, const int sizeY, const int sizeZ);
-float* loadFloatBlock(const char *path, const int size);
+float* loadFloatBlock(const char *path, const int sizeX, const int sizeY, const int sizeZ);
 
 
 #endif /* UTILITIES_H_ */
