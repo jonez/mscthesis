@@ -14,15 +14,14 @@
 #include "clHelper.h"
 
 
-int mccCL(cl_float* dataSet, cl_float isoValue,
-		 size_t sizeX, size_t sizeY, size_t sizeZ,
-		 cl_float4 valuesDistance, cl_int4 valuesOffset,
-		 cl_float4** triangles, cl_float4** normals,
-		 GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
-		 clhResources resources, cl_program program,
-		 cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
-		 cl_kernel classificationKernel, cl_kernel compactionKernel,
-		 cl_kernel generationKernel*/);
+int mccCL(cl_float* dataSet, cl_float isoValue, cl_uint4 inSize,
+		  cl_float4 valuesDistance, cl_int4 valuesOffset,
+		  cl_float4** triangles, cl_float4** normals,
+		  GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
+		  clhResources resources, cl_program program,
+		  cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
+		  cl_kernel classificationKernel, cl_kernel compactionKernel,
+		  cl_kernel generationKernel*/);
 
 void mccReleaseCL();
 

@@ -32,7 +32,7 @@ int zValue = 300;
 //GLuint vbo;
 //cl_float4 *vertices, *normals;
 size_t count, sizeX, sizeY, sizeZ;
-mcdMemParts* geometry;
+mcdMemParts* datasetModel;
 
 
 void reshape(int w, int h) {
@@ -90,16 +90,16 @@ void draw(void) {
 //						glVertex3f(geometry[i]->triangles[v + 2].s[0], geometry[i]->triangles[v + 2].s[1], geometry[i]->triangles[v + 2].s[2]);
 //					glEnd();
 
-					glBindBuffer(GL_ARRAY_BUFFER, geometry[i]->trianglesVBO);
+					glBindBuffer(GL_ARRAY_BUFFER, datasetModel[i]->trianglesVBO);
 					glVertexPointer(4, GL_FLOAT, 0, 0);
 					glEnableClientState(GL_VERTEX_ARRAY);
 
-					glBindBuffer(GL_ARRAY_BUFFER, geometry[i]->normalsVBO);
-					glNormalPointer(GL_FLOAT, sizeof(float)*4, 0);
+					glBindBuffer(GL_ARRAY_BUFFER, datasetModel[i]->normalsVBO);
+					glNormalPointer(GL_FLOAT, sizeof(float) * 4, 0);
 					glEnableClientState(GL_NORMAL_ARRAY);
 
-					glDrawArrays(GL_TRIANGLES, 0, geometry[i]->size);
-//					glDrawArrays(GL_POINTS, 0, geometry[i]->size);
+					glDrawArrays(GL_TRIANGLES, 0, datasetModel[i]->size);
+//					glDrawArrays(GL_POINTS, 0, model[i]->size);
 
 					glDisableClientState(GL_VERTEX_ARRAY);
 					glDisableClientState(GL_NORMAL_ARRAY);
@@ -232,17 +232,27 @@ int main(int argc, char** argv) {
 //	clsTestScan();
 //	test();
 
-	clhSetVerbose(TRUE);
-	clsSetVerbose(TRUE);
+	clhSetVerbose(FALSE);
+	clsSetVerbose(FALSE);
 
-	sizeX = 255;
-	sizeY = 255;
-	sizeZ = 255;
 	float distanceX = 1.0f;
 	float distanceY = 1.0f;
 	float distanceZ = 1.0f;
 
-	float isoValue = 80;
+
+	sizeX = 255;
+	sizeY = 255;
+	sizeZ = 255;
+//	float isoValue = 80;
+//	float* dataset = loadFloatBlock("data/aneurism.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+	float isoValue = 100000;
+	float* dataset = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
+
+//	sizeX = 40;
+//	sizeY = 40;
+//	sizeZ = 40;
+//	float isoValue = 80;
+//	float* dataset = loadFloatBlock("data/sin.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
 
 //	cl_int4 offset = {{0, 0, 0, 0}};
 
@@ -256,15 +266,14 @@ int main(int argc, char** argv) {
 //	for(int i = 0; i < (sizeX + 1) * (sizeY + 1) * (sizeZ + 1); i++)
 //		if(data[i] < isoValue) c++;
 //	printf("%d\n", c);
-	float* dataSet = loadFloatBlock("data/aneurism.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
-//	float* dataSet = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
+
 //	cl_float4 *results1 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 15);
 //	cl_float4 *results2 = (cl_float4 *)malloc(sizeof(cl_float4) * size * size * size * 5);
 //	cl_float4* output;
 
 //	runCL(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &geometry, &vbo, &count);
-	dispatch(dataSet, isoValue, distanceX, distanceY, distanceZ,
-			sizeX, sizeY, sizeZ, &geometry, &count, FALSE);
+	dispatch(dataset, isoValue, distanceX, distanceY, distanceZ,
+			sizeX, sizeY, sizeZ, &datasetModel, &count, FALSE);
 //	mcRunHost(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &output, &count);
 
 //	mcdMemParts aux = malloc(sizeof(struct _mcdMemParts));
@@ -277,10 +286,10 @@ int main(int argc, char** argv) {
 	size_t sum = 0;
 	for(int i = 0; i < count; i++) {
 		printf("%d: %d (%dKB [%d] + %dKB [%d])\n",
-				i, geometry[i]->size,
-				geometry[i]->size * sizeof(cl_float4) / KB, geometry[i]->trianglesVBO,
-				geometry[i]->size * sizeof(cl_float4) / KB, geometry[i]->normalsVBO);
-		sum += geometry[i]->size * 2;
+				i, datasetModel[i]->size,
+				datasetModel[i]->size * sizeof(cl_float4) / KB, datasetModel[i]->trianglesVBO,
+				datasetModel[i]->size * sizeof(cl_float4) / KB, datasetModel[i]->normalsVBO);
+		sum += datasetModel[i]->size * 2;
 	}
 	printf("sum: %d (%dMB)\n", sum, sum * sizeof(cl_float4) / MB);
 
@@ -337,8 +346,8 @@ int main(int argc, char** argv) {
 	// Turn the flow of control over to GLUT
 	glutMainLoop();
 
-	free(dataSet);
-	free(geometry);
+	free(dataset);
+	free(datasetModel);
 		
 	return 0;
 	

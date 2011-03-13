@@ -30,7 +30,7 @@ void mcdSetVerbose(const int state) {
 ////////////////////////////////////////////////////////////////////////////////
 
 
-int dispatch(float* input, float isoValue, /* cl_float4 valuesDistance, */
+int dispatch(float* input, float isoValue,
 			 float valDistX, float valDistY, float valDistZ,
 			 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
 			 mcdMemParts** output, size_t* outSize, int useHost) {
@@ -45,7 +45,7 @@ int dispatch(float* input, float isoValue, /* cl_float4 valuesDistance, */
 
 	cl_float4 valuesDistance = {{valDistX, valDistY, valDistZ, 0.0f}};
 
-	size_t partsCount = ceil((double)stackSize / steps);
+	size_t partsCount = ceil((float)stackSize / steps);
 	// instead of ceil() from math.h
 //	size_t partsCount = stackSize / steps;
 //	if(stackSize % steps) partsCount++;
@@ -57,22 +57,17 @@ int dispatch(float* input, float isoValue, /* cl_float4 valuesDistance, */
 //			memSize = (stackSize - s) * stepSize * sizeof(cl_float);
 			steps = stackSize - s;
 
-		cl_int4 offset = {{0, 0, s, 0}};
+		cl_int4 offsets = {{0, 0, s, 0}};
+		cl_uint4 sizes = {{inSizeX, inSizeY, steps, 0}};
 
 		mcdMemParts part = malloc(sizeof(struct mcdMemParts));
 
-//		runCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
-//				valuesDistance, offset, &part->data, vbo, &part->size,
-//				resoruces, program, trianglesTableBuffer, verticesTableBuffer,
-//				classificationKernel, compactionKernel, generationKernel);
-//		printf("%d-%.0f\n", s * stepSize, input[s * stepSize]);
-
 		if(useHost)
 			mccHost(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
-					valuesDistance, offset, &part->triangles, &part->normals, &part->size);
+					valuesDistance, offsets, &part->triangles, &part->normals, &part->size);
 		else
-			mccCL(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
-					valuesDistance, offset, &part->triangles, &part->normals,
+			mccCL(&input[s * stepSize], isoValue, sizes, valuesDistance, offsets,
+					&part->triangles, &part->normals,
 					&part->trianglesVBO, &part->normalsVBO, &part->size);
 
 		parts[count] = part;

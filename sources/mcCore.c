@@ -62,6 +62,7 @@ size_t compactionMaxWGS;
 size_t generationMaxWGS;
 cl_mem trianglesTableBuffer;
 cl_mem verticesTableBuffer;
+cl_sampler inputTextureSampler;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -70,27 +71,25 @@ cl_mem verticesTableBuffer;
  *
  * Notes: ? - add option to keep output result in memory device
  */
-int mccCL(cl_float* dataSet, cl_float isoValue,
-		 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
-		 cl_float4 valuesDistance, cl_int4 valuesOffset,
-		 cl_float4** triangles, cl_float4** normals,
-		 GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
-		 clhResources resources, cl_program program,
-		 cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
-		 cl_kernel classificationKernel, cl_kernel compactionKernel,
-		 cl_kernel generationKernel*/) {
+int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
+		  cl_float4 valuesDistances, cl_int4 valuesOffsets,
+		  cl_float4** triangles, cl_float4** normals,
+		  GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
+		  clhResources resources, cl_program program,
+		  cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
+		  cl_kernel classificationKernel, cl_kernel compactionKernel,
+		  cl_kernel generationKernel*/) {
 
 	int arg;
 	cl_int err;
 	cl_event event;
-
-	size_t trianglesTableSize, verticesTableSize;
 
 	if(!initialized) {
 
 		resources = clhInitResources("", CL_DEVICE_TYPE_CPU, 0, &err);
 		program = clhBuildProgramFromFile(KERNELS_SOURCE_FILE, resources, &err);
 
+		size_t trianglesTableSize, verticesTableSize;
 		// Allocate memory on device to hold lookup tables
 		trianglesTableSize = sizeof(trianglesTable);
 //		trianglesTableBuffer =
@@ -102,7 +101,7 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 						trianglesTableSize, NULL, &err);
 		err |= clEnqueueWriteBuffer(resources->cmdQueues[0], trianglesTableBuffer,
 				CL_TRUE, 0, trianglesTableSize, trianglesTable, 0, NULL, NULL);
-		clhErrorInfo(err, "create triangles lookup table", "mcCore");
+		clhErrorInfo(err, "create triangles lookup table", __FILE__);
 
 		verticesTableSize = sizeof(verticesTable);
 //		verticesTableBuffer =
@@ -114,7 +113,7 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 						verticesTableSize, NULL, &err);
 		err |= clEnqueueWriteBuffer(resources->cmdQueues[0], verticesTableBuffer,
 				CL_TRUE, 0, verticesTableSize, verticesTable, 0, NULL, NULL);
-		clhErrorInfo(err, "create vertices lookup table", "mcCore");
+		clhErrorInfo(err, "create vertices lookup table", __FILE__);
 
 		//### DEBUG ###
 //		unsigned char* vTable = malloc(verticesTableSize);
@@ -130,24 +129,29 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 		//	for(int i = 0; i < kernelCount; i++)
 		classificationKernel =
 				clCreateKernel(program, kernelNames[MC_CLASSIFICATION], &err);
-		clhErrorInfo(err, "create kernel classification", "mcCore");
+		clhErrorInfo(err, "create kernel classification", __FILE__);
 
 		classificationMaxWGS = clhGetKernelMaxWorkGroupSize(classificationKernel, NULL, &err);
 		printf("max classification wgs: %d\n", classificationMaxWGS);
 
 		compactionKernel =
 				clCreateKernel(program, kernelNames[MC_COMPACTION], &err);
-		clhErrorInfo(err, "create kernel compaction", "mcCore");
+		clhErrorInfo(err, "create kernel compaction", __FILE__);
 
 		compactionMaxWGS = clhGetKernelMaxWorkGroupSize(compactionKernel, NULL, &err);
 		printf("max compation wgs: %d\n", compactionMaxWGS);
 
 		generationKernel =
 				clCreateKernel(program, kernelNames[MC_GENERATION], &err);
-		clhErrorInfo(err, "create kernel generation", "mcCore");
+		clhErrorInfo(err, "create kernel generation", __FILE__);
 
 		generationMaxWGS = clhGetKernelMaxWorkGroupSize(generationKernel, NULL, &err);
 		printf("max generation wgs: %d\n", generationMaxWGS);
+
+		// create texture sampler
+		inputTextureSampler = clCreateSampler(resources->context, CL_FALSE,
+				CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR, &err);
+		clhErrorInfo(err, "create sampler", __FILE__);
 
 		// Now create the kernel "objects" that we want to use
 		//	cl_kernel kernel;
@@ -169,17 +173,45 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 
 	// Allocate memory on the device to hold our data and store the results into
 
+	// create texture from dataset and get info
+	cl_image_format dataSetFormat;
+	dataSetFormat.image_channel_order = CL_R;
+	dataSetFormat.image_channel_data_type = CL_FLOAT;
+
+	size_t origin[3] = {0, 0, 0};
+	size_t region[3] = {valuesSizes.s[0] + 1, valuesSizes.s[1] + 1, valuesSizes.s[2] + 1};
+
+	cl_mem inputTexture = clCreateImage3D(resources->context, CL_MEM_READ_ONLY,
+			&dataSetFormat, valuesSizes.s[0] + 1, valuesSizes.s[1] + 1,
+			valuesSizes.s[2] + 1, 0, 0, NULL, &err);
+	err |= clEnqueueWriteImage(resources->cmdQueues[0], inputTexture, CL_TRUE,
+			origin, region, 0, 0, values, 0, NULL, NULL);
+	clhErrorInfo(err, "create and fill input texture", __FILE__);
+
+
+//	size_t infos;
+//	err = clGetImageInfo(inputTexture, CL_IMAGE_ELEMENT_SIZE, sizeof(infos), &infos, NULL);
+//	printf("elem. size: %d\n", infos);
+//	err |= clGetImageInfo(inputTexture, CL_IMAGE_ROW_PITCH, sizeof(infos), &infos, NULL);
+//	printf("row size: %d\n", infos);
+//	err |= clGetImageInfo(inputTexture, CL_IMAGE_SLICE_PITCH, sizeof(infos), &infos, NULL);
+//	printf("slice size: %d\n", infos);
+//	clhErrorInfo(err, "get texture info", __FILE__);
+
+
 	// Input and results array
-	size_t inputBufferSize = sizeof(cl_float) *
-			((inSizeX + 1) * (inSizeY + 1) * (inSizeZ + 1));
+	size_t voxelsCount = valuesSizes.s[0] * valuesSizes.s[1] * valuesSizes.s[2];
+
+	size_t inputTextureSize = sizeof(cl_float) *
+			((valuesSizes.s[0] + 1) * (valuesSizes.s[1] + 1) * (valuesSizes.s[2] + 1));
 //	cl_mem inputBuffer = clCreateBuffer(resources->context, CL_MEM_READ_ONLY |
 //			CL_MEM_COPY_HOST_PTR, inputBufferSize, dataSet, &err);
 	// profiling proposes
-	cl_mem inputBuffer = clCreateBuffer(resources->context, CL_MEM_READ_ONLY,
-			inputBufferSize, NULL, &err);
-	err |= clEnqueueWriteBuffer(resources->cmdQueues[0], inputBuffer,
-			CL_TRUE, 0, inputBufferSize, dataSet, 0, NULL, NULL);
-	clhErrorInfo(err, "create and fill input buffer", "mcCore");
+//	cl_mem inputBuffer = clCreateBuffer(resources->context, CL_MEM_READ_ONLY,
+//			inputBufferSize, NULL, &err);
+//	err |= clEnqueueWriteBuffer(resources->cmdQueues[0], inputBuffer,
+//			CL_TRUE, 0, inputBufferSize, dataSet, 0, NULL, NULL);
+//	clhErrorInfo(err, "create and fill input buffer", "mcCore");
 
 //	### DEBUG ###
 //	float* in = malloc(inputSize);
@@ -216,8 +248,7 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 //			(void*)input, 0, NULL, &event);
 //	mclErrorInfo(err, "fill input buffer", "mcCore");
 
-	size_t classificationBufferSize = sizeof(cl_float) *
-			(inSizeX * inSizeY * inSizeZ);
+	size_t classificationBufferSize = sizeof(cl_float) * voxelsCount;
 	cl_mem verticesBuffer = clCreateBuffer(resources->context,
 			CL_MEM_READ_WRITE, classificationBufferSize, NULL, &err);
 	clhErrorInfo(err, "create vertices buffer", "mcCore");
@@ -233,7 +264,11 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 	// Now setup the arguments to our kernel
 	arg = 0;
 	err  = clSetKernelArg(classificationKernel, arg++,
-			sizeof(cl_mem), &inputBuffer);
+			sizeof(cl_mem), &inputTexture);
+	err |= clSetKernelArg(classificationKernel, arg++,
+			sizeof(cl_sampler), &inputTextureSampler);
+	err |= clSetKernelArg(classificationKernel, arg++,
+			sizeof(cl_float4), &valuesOffsets);
 	err |= clSetKernelArg(classificationKernel, arg++,
 			sizeof(cl_float), &isoValue);
 	err |= clSetKernelArg(classificationKernel, arg++,
@@ -249,8 +284,8 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 	// Run the calculation by enqueuing it and forcing the
 	// command queue to complete the task
 	printf("Launching classification kernel configuration: %d * %d * %d = %d\n",
-			inSizeX, inSizeY, inSizeZ , (inSizeX * inSizeY * inSizeZ));
-	size_t classificationGWS[3] = {inSizeX, inSizeY, inSizeZ};
+			valuesSizes.s[0], valuesSizes.s[1], valuesSizes.s[2], voxelsCount);
+	size_t classificationGWS[3] = {valuesSizes.s[0], valuesSizes.s[1], valuesSizes.s[2]};
 
 	err = clEnqueueNDRangeKernel(resources->cmdQueues[0], classificationKernel,
 			3, NULL, classificationGWS, NULL, 0, NULL, &event);
@@ -288,9 +323,9 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 
 //	exit(0);
 
-	float voxelCount = 0;
+	float occupiedVoxelsCount = 0;
 	cl_mem scannedOccupiedBuffer = clsScanFromDevice(resources, 0,
-			occupiedBuffer, inSizeX * inSizeY * inSizeZ, &voxelCount, &err);
+			occupiedBuffer, voxelsCount, &occupiedVoxelsCount, &err);
 
 	//### DEBUG ###
 //	float* scan = malloc(classificationSize);
@@ -300,7 +335,7 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 //		printf("%.0f,", scan[i]);
 //	printf("\n");
 
-	size_t compactionBufferSize = voxelCount * sizeof(size_t);
+	size_t compactionBufferSize = occupiedVoxelsCount * sizeof(size_t);
 
 	if(compactionBufferSize > 0) {
 
@@ -320,9 +355,9 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 		err |= clSetKernelArg(compactionKernel, arg++,
 				sizeof(cl_mem), &compactedInputBuffer);
 
-		printf("Launching compaction kernel configuration: %d\n",
-				inSizeX * inSizeY * inSizeZ);
-		size_t compactionGWS[1] = {inSizeX * inSizeY * inSizeZ};
+		printf("Launching compaction kernel configuration: %d\n", voxelsCount);
+
+		size_t compactionGWS[1] = {voxelsCount};
 
 		err = clEnqueueNDRangeKernel(resources->cmdQueues[0], compactionKernel,
 				1, NULL, compactionGWS, NULL, 0, NULL, &event);
@@ -338,9 +373,9 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 		// Get all of the stuff written and allocated
 		clFinish(resources->cmdQueues[0]);
 
-		float verticeCount = 0;
+		float vertexCount = 0;
 		cl_mem scannedVerticesBuffer = clsScanFromDevice(resources, 0,
-				verticesBuffer, inSizeX * inSizeY * inSizeZ, &verticeCount, &err);
+				verticesBuffer, voxelsCount, &vertexCount, &err);
 
 //		size_t trianglesCount = verticeCount / 3;
 
@@ -358,14 +393,14 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 	//		printf("%d,", comp[i]);
 	//	printf("\n");
 
-		size_t trianglesBufferSize = verticeCount * sizeof(cl_float4);
+		size_t trianglesBufferSize = vertexCount * sizeof(cl_float4);
 //		cl_mem trianglesBuffer = clCreateBuffer(resources->context,
 //				CL_MEM_READ_WRITE, trianglesBufferSize, NULL, &err);
 		GLuint trianglesVBORet;
 		cl_mem trianglesBuffer = clhCreateGLCLBuffer(resources->context, trianglesBufferSize, &trianglesVBORet, &err);
 		clhErrorInfo(err, "create triangles buffer", "mcCore");
 
-		size_t normalsBufferSize = verticeCount * sizeof(cl_float4);
+		size_t normalsBufferSize = vertexCount * sizeof(cl_float4);
 //		cl_mem normalsBuffer = clCreateBuffer(resources->context,
 //				CL_MEM_READ_WRITE, normalsBufferSize, NULL, &err);
 		GLuint normalsVBORet;
@@ -375,23 +410,25 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 
 		clFinish(resources->cmdQueues[0]);
 
-		cl_uint2 sizes = {{inSizeX, inSizeY}};
-		cl_uint voxelCountUInt = voxelCount;
+		cl_uint2 size = {{valuesSizes.s[0], valuesSizes.s[1]}};
+		cl_uint voxelCountUInt = occupiedVoxelsCount;
 
 		// Now setup the arguments to our kernel
 		arg = 0;
 		err  = clSetKernelArg(generationKernel, arg++,
-				sizeof(cl_mem), &inputBuffer);
+				sizeof(cl_mem), &inputTexture);
 		err |= clSetKernelArg(generationKernel, arg++,
-				sizeof(cl_uint2), &sizes);
+				sizeof(cl_sampler), &inputTextureSampler);
+		err |= clSetKernelArg(generationKernel, arg++,
+				sizeof(cl_uint), &voxelCountUInt);
+		err |= clSetKernelArg(generationKernel, arg++,
+				sizeof(cl_uint2), &size);
 		err |= clSetKernelArg(generationKernel, arg++,
 				sizeof(cl_float), &isoValue);
 		err |= clSetKernelArg(generationKernel, arg++,
-				sizeof(cl_float4), &valuesDistance);
+				sizeof(cl_float4), &valuesDistances);
 		err |= clSetKernelArg(generationKernel, arg++,
-				sizeof(cl_int4), &valuesOffset);
-		err |= clSetKernelArg(generationKernel, arg++,
-				sizeof(cl_uint), &voxelCountUInt);
+				sizeof(cl_int4), &valuesOffsets);
 		err |= clSetKernelArg(generationKernel, arg++,
 				sizeof(cl_mem), &trianglesTableBuffer);
 		err |= clSetKernelArg(generationKernel, arg++,
@@ -411,12 +448,12 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 	    clhErrorInfo(err, "aquire gl objects", "mcCore");
 
 
-	    size_t globalWorkSize = ceil(voxelCount / generationMaxWGS) * generationMaxWGS;
+	    size_t globalWorkSize = ceil(occupiedVoxelsCount / generationMaxWGS) * generationMaxWGS;
 
 	    // Run the calculation by enqueuing it and forcing the
 		// command queue to complete the task
 		printf("Launching generation kernel configuration: %d (%d)\n",
-				(size_t)voxelCount, globalWorkSize);
+				(size_t)occupiedVoxelsCount, globalWorkSize);
 		size_t generationGWS[1] = {globalWorkSize};
 		size_t generationLWS[1] = {generationMaxWGS};
 
@@ -465,17 +502,17 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 		if(normals) *normals = NULL;
 		if(trianglesVBO) *trianglesVBO = trianglesVBORet;
 		if(normalsVBO) *normalsVBO = normalsVBORet;
-		if(outSize) *outSize = verticeCount;
+		if(outSize) *outSize = vertexCount;
 
 		printf( "Memory allocation\n"
 					"\tinput buffer: %dKB\n"
 					"\tclassification buffers: 2x %dKB\n"
 					"\tcompacted input buffer: %dKB (%d%%)\n"
 					"\toutput buffer %dKB + %dKB\n",
-				inputBufferSize / KB,
+				inputTextureSize / KB,
 				classificationBufferSize / KB,
 				compactionBufferSize / KB,
-				(compactionBufferSize * 100) / inputBufferSize,
+				(compactionBufferSize * 100) / inputTextureSize,
 				trianglesBufferSize / KB,
 				normalsBufferSize / KB);
 
@@ -491,14 +528,14 @@ int mccCL(cl_float* dataSet, cl_float isoValue,
 					"\tinput buffer: %dKB\n"
 					"\tclassification buffers: 2x %dKB\n"
 					"\tcompacted input buffer: %dKB (%d%%)\n",
-				inputBufferSize / KB,
+				inputTextureSize / KB,
 				classificationBufferSize / KB,
 				compactionBufferSize / KB,
-				(compactionBufferSize * 100) / inputBufferSize);
+				(compactionBufferSize * 100) / inputTextureSize);
 
 	}
 
-	clReleaseMemObject(inputBuffer);
+	clReleaseMemObject(inputTexture);
 
 
 	return CL_SUCCESS;
