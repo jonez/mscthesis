@@ -29,6 +29,18 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 
+int MCC_VERBOSE = FALSE;
+
+int mccGetVerbose() {
+	return MCC_VERBOSE;
+}
+
+void mccSetVerbose(const int state) {
+	MCC_VERBOSE = state;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 enum kernelMethods {
 
     MC_CLASSIFICATION		= 0,
@@ -62,6 +74,7 @@ size_t compactionMaxWGS;
 size_t generationMaxWGS;
 cl_mem trianglesTableBuffer;
 cl_mem verticesTableBuffer;
+cl_image_format dataSetFormat;
 cl_sampler inputTextureSampler;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,21 +85,21 @@ cl_sampler inputTextureSampler;
  * Notes: ? - add option to keep output result in memory device
  */
 int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
-		  cl_float4 valuesDistances, cl_int4 valuesOffsets,
-		  cl_float4** triangles, cl_float4** normals,
+		  cl_float4 valuesDistances, cl_float4 valuesOffsets, cl_int2 valuesZBuffers,
 		  GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
+		  cl_float4** triangles, cl_float4** normals,
 		  clhResources resources, cl_program program,
 		  cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
 		  cl_kernel classificationKernel, cl_kernel compactionKernel,
 		  cl_kernel generationKernel*/) {
 
-	int arg;
+	size_t arg;
 	cl_int err;
 	cl_event event;
 
 	if(!initialized) {
 
-		resources = clhInitResources("", CL_DEVICE_TYPE_CPU, 0, &err);
+		resources = clhInitResources(NULL, CL_DEVICE_TYPE_CPU, 0, &err);
 		program = clhBuildProgramFromFile(KERNELS_SOURCE_FILE, resources, &err);
 
 		size_t trianglesTableSize, verticesTableSize;
@@ -148,7 +161,10 @@ int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
 		generationMaxWGS = clhGetKernelMaxWorkGroupSize(generationKernel, NULL, &err);
 		printf("max generation wgs: %d\n", generationMaxWGS);
 
-		// create texture sampler
+		// create texture format and sampler
+		dataSetFormat.image_channel_order = CL_R;
+		dataSetFormat.image_channel_data_type = CL_FLOAT;
+
 		inputTextureSampler = clCreateSampler(resources->context, CL_FALSE,
 				CL_ADDRESS_CLAMP_TO_EDGE, CL_FILTER_LINEAR, &err);
 		clhErrorInfo(err, "create sampler", __FILE__);
@@ -174,16 +190,18 @@ int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
 	// Allocate memory on the device to hold our data and store the results into
 
 	// create texture from dataset and get info
-	cl_image_format dataSetFormat;
-	dataSetFormat.image_channel_order = CL_R;
-	dataSetFormat.image_channel_data_type = CL_FLOAT;
+
+	size_t zBufferSize = valuesZBuffers.s[0] + valuesZBuffers.s[1];
+	cl_float4 valuesBuffers = {{0.0f, 0.0f, valuesZBuffers.s[0], 0.0f}};
 
 	size_t origin[3] = {0, 0, 0};
-	size_t region[3] = {valuesSizes.s[0] + 1, valuesSizes.s[1] + 1, valuesSizes.s[2] + 1};
+	size_t region[3] = {valuesSizes.s[0] + 1,
+						valuesSizes.s[1] + 1,
+						valuesSizes.s[2] + zBufferSize + 1};
 
 	cl_mem inputTexture = clCreateImage3D(resources->context, CL_MEM_READ_ONLY,
 			&dataSetFormat, valuesSizes.s[0] + 1, valuesSizes.s[1] + 1,
-			valuesSizes.s[2] + 1, 0, 0, NULL, &err);
+			valuesSizes.s[2] + zBufferSize + 1, 0, 0, NULL, &err);
 	err |= clEnqueueWriteImage(resources->cmdQueues[0], inputTexture, CL_TRUE,
 			origin, region, 0, 0, values, 0, NULL, NULL);
 	clhErrorInfo(err, "create and fill input texture", __FILE__);
@@ -268,11 +286,9 @@ int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
 	err |= clSetKernelArg(classificationKernel, arg++,
 			sizeof(cl_sampler), &inputTextureSampler);
 	err |= clSetKernelArg(classificationKernel, arg++,
-			sizeof(cl_float4), &valuesOffsets);
+			sizeof(cl_float4), &valuesBuffers);
 	err |= clSetKernelArg(classificationKernel, arg++,
 			sizeof(cl_float), &isoValue);
-	err |= clSetKernelArg(classificationKernel, arg++,
-			sizeof(cl_mem), &trianglesTableBuffer);
 	err |= clSetKernelArg(classificationKernel, arg++,
 			sizeof(cl_mem), &verticesTableBuffer);
 	err |= clSetKernelArg(classificationKernel, arg++,
@@ -428,7 +444,9 @@ int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
 		err |= clSetKernelArg(generationKernel, arg++,
 				sizeof(cl_float4), &valuesDistances);
 		err |= clSetKernelArg(generationKernel, arg++,
-				sizeof(cl_int4), &valuesOffsets);
+				sizeof(cl_float4), &valuesOffsets);
+		err |= clSetKernelArg(generationKernel, arg++,
+				sizeof(cl_float4), &valuesBuffers);
 		err |= clSetKernelArg(generationKernel, arg++,
 				sizeof(cl_mem), &trianglesTableBuffer);
 		err |= clSetKernelArg(generationKernel, arg++,
@@ -498,8 +516,8 @@ int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
 
 //		if(triangles) *triangles = trianglesRet;
 //		if(normals) *normals = normalsRet;
-		if(triangles) *triangles = NULL;
-		if(normals) *normals = NULL;
+//		if(triangles) *triangles = NULL;
+//		if(normals) *normals = NULL;
 		if(trianglesVBO) *trianglesVBO = trianglesVBORet;
 		if(normalsVBO) *normalsVBO = normalsVBORet;
 		if(outSize) *outSize = vertexCount;
@@ -518,8 +536,8 @@ int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
 
 	} else {
 
-		if(triangles) *triangles = NULL;
-		if(normals) *normals = NULL;
+//		if(triangles) *triangles = NULL;
+//		if(normals) *normals = NULL;
 		if(trianglesVBO) trianglesVBO = NULL;
 		if(normalsVBO) normalsVBO = NULL;
 		if(outSize) *outSize = 0;
@@ -537,7 +555,6 @@ int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
 
 	clReleaseMemObject(inputTexture);
 
-
 	return CL_SUCCESS;
 }
 
@@ -547,14 +564,14 @@ void mccReleaseCL() {
 
 	clsRelease();
 
+	clReleaseSampler(inputTextureSampler);
 	clReleaseMemObject(trianglesTableBuffer);
 	clReleaseMemObject(verticesTableBuffer);
 	clReleaseKernel(classificationKernel);
 	clReleaseKernel(compactionKernel);
 	clReleaseKernel(generationKernel);
 	clReleaseProgram(program);
-//	clReleaseCommandQueue(resources->cmdQueues[0]);
-//	clReleaseContext(resources->context);
+
 
 	printf("%s resources released!\n", __FILE__);
 
@@ -615,7 +632,7 @@ inline static cl_float4 triangleNormal(cl_float4* t) {
 
 int mccHost(cl_float* dataSet, cl_float isoValue,
 		   size_t inSizeX, size_t inSizeY, size_t inSizeZ,
-		   cl_float4 valuesDistance, cl_int4 valuesOffset,
+		   cl_float4 valuesDistance, cl_float4 valuesOffset,
 		   cl_float4** triangles, cl_float4** normals, size_t* outSize) {
 
 	cl_float* values = dataSet;

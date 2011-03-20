@@ -124,7 +124,10 @@ void clhErrorCheck(const cl_int error, const char* info, const char* source) {
 // add option to select the platform - now, the first is selected
 // ? add fallback to device type specified in 'selectedDeviceType'
 
-clhResources clhInitResources(const char* platformName, const cl_device_type selectedDeviceType, const cl_command_queue_properties cmdQueuesProperties, cl_int* err) {
+clhResources clhInitResources(const char* platformName,
+							  const cl_device_type selectedDeviceType,
+							  const cl_command_queue_properties cmdQueuesProperties,
+							  cl_int* err) {
 
 	cl_int 							retErr;
 	cl_platform_id 					platform = NULL;

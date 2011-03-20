@@ -15,6 +15,8 @@
 #include "mcCore.h"
 
 
+#define VALUES_BUFFER_SIZE 1
+
 ////////////////////////////////////////////////////////////////////////////////
 
 int MCD_VERBOSE = FALSE;
@@ -40,46 +42,55 @@ int dispatch(float* input, float isoValue,
 	int steps = 32;
 	size_t stackSize = inSizeZ;
 	size_t stepSize = (inSizeX + 1) * (inSizeY + 1);
-//	size_t memSize = (steps + 1) * stepSize * sizeof(cl_float);
-	size_t count = 0;
+	size_t partsCount = 0;
 
-	cl_float4 valuesDistance = {{valDistX, valDistY, valDistZ, 0.0f}};
+	cl_int2 valuesZBuffers = {{0, 0}};
+	cl_float4 valuesDistance = {{valDistX, valDistY, valDistZ, 1.0f}};
 
-	size_t partsCount = ceil((float)stackSize / steps);
 	// instead of ceil() from math.h
 //	size_t partsCount = stackSize / steps;
 //	if(stackSize % steps) partsCount++;
-	mcdMemParts* parts = calloc(partsCount, sizeof(mcdMemParts));
+	size_t partsSize = ceil((float)stackSize / steps);
+	mcdMemParts* parts = calloc(partsSize, sizeof(mcdMemParts));
 
-	for(int s = 0; s < stackSize; s += steps, count++) {
+	for(int s = 0; s < stackSize; s += steps, partsCount++) {
+
+		if(s <= 0)
+			valuesZBuffers.s[0] = 0;
+		else
+			valuesZBuffers.s[0] = 1;
+
+		if(s >= s + stackSize)
+			valuesZBuffers.s[1] = 0;
+		else
+			valuesZBuffers.s[1] = 1;
 
 		if(s + steps > stackSize)
-//			memSize = (stackSize - s) * stepSize * sizeof(cl_float);
 			steps = stackSize - s;
 
-		cl_int4 offsets = {{0, 0, s, 0}};
 		cl_uint4 sizes = {{inSizeX, inSizeY, steps, 0}};
+		cl_float4 offsets = {{0.0f, 0.0f, (float)s, 0.0f}};
+		size_t memAddress = (s - valuesZBuffers.s[0]) * stepSize;
 
 		mcdMemParts part = malloc(sizeof(struct mcdMemParts));
 
 		if(useHost)
-			mccHost(&input[s * stepSize], isoValue, inSizeX, inSizeY, steps,
+			mccHost(&input[memAddress], isoValue, inSizeX, inSizeY, steps,
 					valuesDistance, offsets, &part->triangles, &part->normals, &part->size);
 		else
-			mccCL(&input[s * stepSize], isoValue, sizes, valuesDistance, offsets,
-					&part->triangles, &part->normals,
+			mccCL(&input[memAddress], isoValue, sizes, valuesDistance, offsets, valuesZBuffers,
 					&part->trianglesVBO, &part->normalsVBO, &part->size);
 
-		parts[count] = part;
+		parts[partsCount] = part;
 
-		printf(">>> count: %d, s: %d, size: %d\n", count, s, part->size);
+		printf(">>> count: %d, s: %d, size: %d\n", partsCount, s, part->size);
 
 	}
 
 	if(!useHost) mccReleaseCL();
 
 	*output = parts;
-	*outSize = count;
+	*outSize = partsCount;
 
 //	for(int i = 0; i < *outSize; i++) {
 //		printf("%d -> %d\n", i, parts[i]->size);

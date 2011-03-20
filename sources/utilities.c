@@ -79,15 +79,16 @@ float* makeFloatBlock(const int sizeX, const int sizeY, const int sizeZ) {
 				block[x + y * sizeX + z * sizeX * sizeY] =
 						((x - xC) * (x - xC) +
 						 (y - yC) * (y - yC) +
-						 (z - zC) * (z - zC)) * 10;
+						 (z - zC) * (z - zC)) * -10;
 
 	return block;
 }
 
-float* loadFloatBlock(const char *path, const int szX, const int szY, const int szZ) {
+float* loadCharBlock(const char *path, const int szX, const int szY, const int szZ) {
 
 	FILE* fd;
-	long fz = szX * szY * szZ;
+	long fz = szX * szY * (szZ + 1);
+	long slice = szX * szY;
 	float* data;
 
 	// open file for reading
@@ -110,10 +111,11 @@ float* loadFloatBlock(const char *path, const int szX, const int szY, const int 
 //	rewind(fd);
 
 	data = (float*)calloc(fz, sizeof(float));
-	int i = 0;
-	int v;
-	while((v = fgetc(fd)) != EOF && i < fz)
-		data[i++] = (float)v;
+	int i = slice;
+	while((data[i++] = fgetc(fd)) != EOF && i < fz);
+
+	for(i = 0; i < slice; i++)
+		data[i] = data[slice + i];
 
 	return data;
 }

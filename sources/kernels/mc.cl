@@ -28,8 +28,11 @@
 //					coordinates.z * sizes.x * sizes.y);
 //
 //}
-inline size_t getPosition(const int x, const int y, const int z,
-						  const size_t sizeX, const size_t sizeY) {
+inline size_t getPosition(const int x,
+						  const int y,
+						  const int z,
+						  const size_t sizeX,
+						  const size_t sizeY) {
 	
 	return (size_t)(x + y * sizeX + z * sizeX * sizeY);
 }
@@ -41,13 +44,16 @@ inline size_t getPosition(const int x, const int y, const int z,
 //	float4 adjCoords = coordinates + TXT_COORD_OFFSET;
 //	return read_imagef(values, sampler, adjCoords).x;
 //}
-inline float getValue(read_only image3d_t values, const sampler_t sampler,
-					  const float x, const float y, const float z) {
+inline float getValue(read_only image3d_t values,
+					  const sampler_t sampler,
+					  const float4 buffers,
+					  const float x,
+					  const float y,
+					  const float z) {
 	
 	float4 coordinates = (float4)(x, y, z, 0.0f);
 	coordinates.xyz += TXT_COORD_OFFSET;
-//	coordinates += TXT_COORD_OFFSET;
-//	coordinates.w = 0.0f;
+	coordinates += buffers;
 	
 	return read_imagef(values, sampler, coordinates).x;
 }
@@ -56,10 +62,13 @@ inline float getValue(read_only image3d_t values, const sampler_t sampler,
 // the output result is two float arrays, 'vVoxels' containing the number of 
 // vertices per voxel and 'oVoxels' which indicates if a voxel is relevant/
 // occupied (1) or not relevant/empty (0)
-kernel void mcClassification(read_only image3d_t values, sampler_t sampler,
-							 const uint4 valuesOffset, const float isoValue,
-							 constant uchar* tTable, constant uchar* vTable,
-							 global float* vVoxels, global float* oVoxels) {
+kernel void mcClassification(read_only image3d_t values,
+							 const sampler_t valuesSampler,
+							 const float4 valuesBuffers,
+							 const float isoValue,
+							 constant uchar* vTable,
+							 global float* vVoxels,
+							 global float* oVoxels) {
 	
 	// int4?
 	// get coordinates
@@ -70,9 +79,9 @@ kernel void mcClassification(read_only image3d_t values, sampler_t sampler,
 	float xf = x;
 	float yf = y;
 	float zf = z;
-	float xfi = x + 1.0f;
-	float yfi = y + 1.0f;
-	float zfi = z + 1.0f;
+	float xfi = xf + 1.0f;
+	float yfi = yf + 1.0f;
+	float zfi = zf + 1.0f;
 	
 	// ulong2?
 	// work-item and data set sizes
@@ -83,14 +92,14 @@ kernel void mcClassification(read_only image3d_t values, sampler_t sampler,
 	
 	// values of voxel vertices
 	float corners[8];
-	corners[0] = getValue(values, sampler, xf,  yf,  zf );
-	corners[1] = getValue(values, sampler, xfi, yf,  zf );
-	corners[2] = getValue(values, sampler, xfi, yfi, zf );
-	corners[3] = getValue(values, sampler, xf,  yfi, zf );
-	corners[4] = getValue(values, sampler, xf,  yf,  zfi);
-	corners[5] = getValue(values, sampler, xfi, yf,  zfi);
-	corners[6] = getValue(values, sampler, xfi, yfi, zfi);
-	corners[7] = getValue(values, sampler, xf,  yfi, zfi);
+	corners[0] = getValue(values, valuesSampler, valuesBuffers, xf,  yf,  zf );
+	corners[1] = getValue(values, valuesSampler, valuesBuffers, xfi, yf,  zf );
+	corners[2] = getValue(values, valuesSampler, valuesBuffers, xfi, yfi, zf );
+	corners[3] = getValue(values, valuesSampler, valuesBuffers, xf,  yfi, zf );
+	corners[4] = getValue(values, valuesSampler, valuesBuffers, xf,  yf,  zfi);
+	corners[5] = getValue(values, valuesSampler, valuesBuffers, xfi, yf,  zfi);
+	corners[6] = getValue(values, valuesSampler, valuesBuffers, xfi, yfi, zfi);
+	corners[7] = getValue(values, valuesSampler, valuesBuffers, xf,  yfi, zfi);
 	
 	// voxel index combination
 	uchar combination = 0;
@@ -111,8 +120,10 @@ kernel void mcClassification(read_only image3d_t values, sampler_t sampler,
 }
 
 // create an array with relevant data only (occupied voxels)
-kernel void mcCompaction(global float* values, global float* scannedValues,
-						 /*const size_t size, */global size_t* result) {
+kernel void mcCompaction(global float* values,
+						 global float* scannedValues,
+						 /*const size_t size,*/
+						 global size_t* result) {
 	
 	// get coordinates
 	size_t size = get_global_size(0);
@@ -125,7 +136,8 @@ kernel void mcCompaction(global float* values, global float* scannedValues,
 }
 
 // get 3D coordinates from 1D position
-inline int4 getCoordinates(const size_t position, const uint2 sizes) {
+inline int4 getCoordinates(const size_t position,
+						   const uint2 sizes) {
 	
 	int4 coordinates;
 	uint area = sizes.x * sizes.y;
@@ -140,13 +152,16 @@ inline int4 getCoordinates(const size_t position, const uint2 sizes) {
 }
 
 // cumpute linear interpolation of two vertices
-inline float4 vertexInterpolation(float iso, float4 v1, float4 v2) {
+inline float4 vertexInterpolation(float iso,
+								  float4 v1,
+								  float4 v2) {
 
 	float r = (iso - v1.w) / (v2.w - v1.w);
 	return (float4)(mix(v1, v2, r).xyz, 1.0f);
 
 }
 
+// compute normal vector of v1, v2, v3
 //inline float4 triangleNormal(float4 v1, float4 v2, float4 v3) {
 //	
 //	float4 e1 = v2 - v1;
@@ -157,29 +172,31 @@ inline float4 vertexInterpolation(float iso, float4 v1, float4 v2) {
 //}
 
 // compute normal vector of triangle 't'
-inline float4 triangleNormal(float4* t) {
-	
-	float4 e1 = t[1] - t[0];
-	float4 e2 = t[2] - t[0];
-	
-	return cross(e1, e2);
-	
-}
+//inline float4 triangleNormal(float4* t) {
+//	
+//	float4 e1 = t[1] - t[0];
+//	float4 e2 = t[2] - t[0];
+//	
+//	return cross(e1, e2);
+//	
+//}
 
 inline float4 verticeNormal(read_only image3d_t values, 
-							const sampler_t sampler, const float4 v) {
+							const sampler_t sampler,
+							const float4 buffers,
+							const float4 v) {
 	
 	float4 n;
 
-	n.x = getValue(values, sampler, v.x + 1.0f,  v.y,  v.z) -
-			getValue(values, sampler, v.x - 1.0f,  v.y, v.z);
-	n.y = getValue(values, sampler, v.x, v.y + 1.0f, v.z) -
-			getValue(values, sampler, v.x, v.y - 1.0f, v.z);
-	n.z = getValue(values, sampler, v.x, v.y, v.z + 1.0f) -
-			getValue(values, sampler, v.x, v.y, v.z - 1.0f);
+	n.x = getValue(values, sampler, buffers, v.x + 1.0f,  v.y,  v.z) -
+			getValue(values, sampler, buffers, v.x - 1.0f,  v.y, v.z);
+	n.y = getValue(values, sampler, buffers, v.x, v.y + 1.0f, v.z) -
+			getValue(values, sampler, buffers, v.x, v.y - 1.0f, v.z);
+	n.z = getValue(values, sampler, buffers, v.x, v.y, v.z + 1.0f) -
+			getValue(values, sampler, buffers, v.x, v.y, v.z - 1.0f);
 	n.w = 0;
 	
-	return normalize(n);
+	return -normalize(n);
 	
 }
 
@@ -187,12 +204,21 @@ inline float4 verticeNormal(read_only image3d_t values,
 // the output result is two arrays, 'tOutput' (float4) containing all iso- 
 // surface vertices in groups of 3 (a triangle) and 'nOutput' (float4)
 // containing a normal vector for each triangle (or 3 vertices)
-kernel void mcGeneration(read_only image3d_t values, const sampler_t sampler,
-						 const uint count, const uint2 size, const float isoValue,
-						 const float4 valuesDistance, const int4 valuesOffset,
-						 constant uchar* tTable, constant uchar* vTable,
-						 global float* scanned, global size_t* compacted,
-						 global float4* tOutput, global float4* nOutput) {
+kernel void mcGeneration(read_only image3d_t values, 
+						 const sampler_t valuesSampler,
+						 const uint count,
+						 const uint2 size,
+						 const float isoValue,
+						 const float4 valuesDistances,
+						 const float4 valuesOffsets,
+						 const float4 valuesBuffers,
+						 constant uchar* tTable,
+						 constant uchar* vTable,
+						 global float* scanned,
+						 global size_t* compacted,
+						 global float4* tOutput,
+						 global float4* nOutput) {
+	
 	
 	size_t position = get_global_id(0);
 	
@@ -200,25 +226,22 @@ kernel void mcGeneration(read_only image3d_t values, const sampler_t sampler,
 	
 		size_t rawPosition = compacted[position];
 		int4 coordinates = getCoordinates(rawPosition, size);
-		
-		// get kernel coordinates
+			
+		// kernel and values coordinates
 		float xf = coordinates.x;
 		float yf = coordinates.y;
 		float zf = coordinates.z;
 		float xfi = xf + 1.0f;
 		float yfi = yf + 1.0f;
 		float zfi = zf + 1.0f;
-		
+	
 		// voxel coordinates in float data type
-		float xfo = xf + valuesOffset.x;
-		float yfo = yf + valuesOffset.y;
-		float zfo = zf + valuesOffset.z;
-//		float xfo = xf * valuesDistance.x + valuesOffset.x;
-//		float yfo = yf * valuesDistance.y + valuesOffset.y;
-//		float zfo = zf * valuesDistance.z + valuesOffset.z;
-		float xfoi = xfo + valuesDistance.x;
-		float yfoi = yfo + valuesDistance.y;
-		float zfoi = zfo + valuesDistance.z;
+//		float xfv = xf + valuesOffsets.x;
+//		float yfv = yf + valuesOffsets.y;
+//		float zfv = zf + valuesOffsets.z;
+//		float xfvi = xfv + 1.0f;
+//		float yfvi = yfv + 1.0f;
+//		float zfvi = zfv + 1.0f;
 		
 		// work-item and dataset sizes
 //		size_t sX = size.x;
@@ -226,26 +249,18 @@ kernel void mcGeneration(read_only image3d_t values, const sampler_t sampler,
 //		size_t siX = sX + 1;
 //		size_t siY = sY + 1;
 		
+		
 		// coordinates and values of voxel vertices
 		float4 corners[8];
-		corners[0] = (float4)(xfo,  yfo,  zfo,  getValue(values, sampler, xf,  yf,  zf ));
-		corners[1] = (float4)(xfoi, yfo,  zfo,  getValue(values, sampler, xfi, yf,  zf ));
-		corners[2] = (float4)(xfoi, yfoi, zfo,  getValue(values, sampler, xfi, yfi, zf	));
-		corners[3] = (float4)(xfo,  yfoi, zfo,  getValue(values, sampler, xf,  yfi, zf ));
-		corners[4] = (float4)(xfo,  yfo,  zfoi, getValue(values, sampler, xf,  yf,  zfi));
-		corners[5] = (float4)(xfoi, yfo,  zfoi, getValue(values, sampler, xfi, yf,  zfi));
-		corners[6] = (float4)(xfoi, yfoi, zfoi, getValue(values, sampler, xfi, yfi, zfi));
-		corners[7] = (float4)(xfo,  yfoi, zfoi, getValue(values, sampler, xf,  yfi, zfi));
+		corners[0] = (float4)(xf,  yf,  zf,  getValue(values, valuesSampler, valuesBuffers, xf,  yf,  zf ));
+		corners[1] = (float4)(xfi, yf,  zf,  getValue(values, valuesSampler, valuesBuffers, xfi, yf,  zf ));
+		corners[2] = (float4)(xfi, yfi, zf,  getValue(values, valuesSampler, valuesBuffers, xfi, yfi, zf ));
+		corners[3] = (float4)(xf,  yfi, zf,  getValue(values, valuesSampler, valuesBuffers, xf,  yfi, zf ));
+		corners[4] = (float4)(xf,  yf,  zfi, getValue(values, valuesSampler, valuesBuffers, xf,  yf,  zfi));
+		corners[5] = (float4)(xfi, yf,  zfi, getValue(values, valuesSampler, valuesBuffers, xfi, yf,  zfi));
+		corners[6] = (float4)(xfi, yfi, zfi, getValue(values, valuesSampler, valuesBuffers, xfi, yfi, zfi));
+		corners[7] = (float4)(xf,  yfi, zfi, getValue(values, valuesSampler, valuesBuffers, xf,  yfi, zfi));
 		
-//		float4 cornersNormal[8];
-//		cornersNormal[0] = verticeNormal(values, sampler, corners[0]);
-//		cornersNormal[1] = verticeNormal(values, sampler, corners[1]);
-//		cornersNormal[2] = verticeNormal(values, sampler, corners[2]);
-//		cornersNormal[3] = verticeNormal(values, sampler, corners[3]);
-//		cornersNormal[4] = verticeNormal(values, sampler, corners[4]);
-//		cornersNormal[5] = verticeNormal(values, sampler, corners[5]);
-//		cornersNormal[6] = verticeNormal(values, sampler, corners[6]);
-//		cornersNormal[7] = verticeNormal(values, sampler, corners[7]);
 		
 		// voxel index combination
 		uchar combination = 0;
@@ -257,6 +272,7 @@ kernel void mcGeneration(read_only image3d_t values, const sampler_t sampler,
 		combination += (uint)(corners[5].w < isoValue) * 32;
 		combination += (uint)(corners[6].w < isoValue) * 64;
 		combination += (uint)(corners[7].w < isoValue) * 128;
+		
 		
 		// vertices from voxel edges, even if the coordinates are located
 		// outside of edges
@@ -276,26 +292,11 @@ kernel void mcGeneration(read_only image3d_t values, const sampler_t sampler,
 		vertices[10] = vertexInterpolation(isoValue, corners[2], corners[6]);
 		vertices[11] = vertexInterpolation(isoValue, corners[3], corners[7]);
 		
-//		float4 verticesNormal[12];
-//		verticesNormal[0] = vertexInterpolation(isoValue, cornersNormal[0], cornersNormal[1]);
-//		verticesNormal[1] = vertexInterpolation(isoValue, cornersNormal[1], cornersNormal[2]);
-//		verticesNormal[2] = vertexInterpolation(isoValue, cornersNormal[2], cornersNormal[3]);
-//		verticesNormal[3] = vertexInterpolation(isoValue, cornersNormal[3], cornersNormal[0]);
-//
-//		verticesNormal[4] = vertexInterpolation(isoValue, cornersNormal[4], cornersNormal[5]);
-//		verticesNormal[5] = vertexInterpolation(isoValue, cornersNormal[5], cornersNormal[6]);
-//		verticesNormal[6] = vertexInterpolation(isoValue, cornersNormal[6], cornersNormal[7]);
-//		verticesNormal[7] = vertexInterpolation(isoValue, cornersNormal[7], cornersNormal[4]);
-//
-//		verticesNormal[8] = vertexInterpolation(isoValue, cornersNormal[4], cornersNormal[0]);
-//		verticesNormal[9] = vertexInterpolation(isoValue, cornersNormal[1], cornersNormal[5]);
-//		verticesNormal[10] = vertexInterpolation(isoValue, cornersNormal[2], cornersNormal[6]);
-//		verticesNormal[11] = vertexInterpolation(isoValue, cornersNormal[3], cornersNormal[7]);
 		
 		// fill output data in form of triangles and their normal vector
 		// each iteration creates one triangle 
 		uint voxelVertices = vTable[combination];
-		constant uchar * edges = &tTable[combination * VOXEL_VERTICES]; // all edge values should be in private (or at least local) memory
+		constant uchar* edges = &tTable[combination * VOXEL_VERTICES]; // all edge values should be in private (or at least local) memory
 		
 		size_t voxelPosition = scanned[rawPosition];
 	
@@ -310,24 +311,21 @@ kernel void mcGeneration(read_only image3d_t values, const sampler_t sampler,
 		
 	//		triangle[0].w = triangleEdges[0]; // debug purposes
 	//		triangle[0].w = trianglePosition; // debug purposes
-			tOutput[trianglePosition] = vertices[edges[v]];
+			tOutput[trianglePosition] = vertices[edges[v]] * valuesDistances + valuesOffsets;
 //			nOutput[trianglePosition] = verticesNormal[edges[v]];
-			nOutput[trianglePosition] = verticeNormal(values, sampler,
-					vertices[edges[v]] - convert_float4(valuesOffset));
+			nOutput[trianglePosition] = verticeNormal(values, valuesSampler, valuesBuffers, vertices[edges[v]]);
 			
 	//		triangle[1].w = triangleEdges[1]; // debug purposes
 	//		triangle[1].w = combination; // debug purposes
-			tOutput[trianglePosition + 1] = vertices[edges[v + 1]];
+			tOutput[trianglePosition + 1] = vertices[edges[v + 1]] * valuesDistances + valuesOffsets;
 //			nOutput[trianglePosition + 1] = verticesNormal[edges[v + 1]];
-			nOutput[trianglePosition + 1] = verticeNormal(values, sampler,
-					vertices[edges[v + 1]] - convert_float4(valuesOffset));
+			nOutput[trianglePosition + 1] = verticeNormal(values, valuesSampler, valuesBuffers, vertices[edges[v + 1]]);
 			
 	//		triangle[2].w = triangleEdges[2]; // debug purposes
 	//		triangle[2].w = 1; // debug purposes
-			tOutput[trianglePosition + 2] = vertices[edges[v + 2]];
+			tOutput[trianglePosition + 2] = vertices[edges[v + 2]] * valuesDistances + valuesOffsets;
 //			nOutput[trianglePosition + 2] = verticesNormal[edges[v + 2]];
-			nOutput[trianglePosition + 2] = verticeNormal(values, sampler,
-					vertices[edges[v + 2]] - convert_float4(valuesOffset));
+			nOutput[trianglePosition + 2] = verticeNormal(values, valuesSampler, valuesBuffers, vertices[edges[v + 2]]);
 			
 	//		tOutput[trianglePosition] = (float4)(v); // debug purposes
 	//		tOutput[trianglePosition + 1] = (float4)(v+1); // debug purposes

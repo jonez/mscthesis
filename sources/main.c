@@ -243,16 +243,38 @@ int main(int argc, char** argv) {
 	sizeX = 255;
 	sizeY = 255;
 	sizeZ = 255;
+	float isoValue = 50;
+	float* dataset = loadCharBlock("data/skull.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+
+//	sizeX = 255;
+//	sizeY = 255;
+//	sizeZ = 255;
+//	float isoValue = -100000;
+//	float* dataset = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
+
+//	sizeX = 255;
+//	sizeY = 255;
+//	sizeZ = 127;
+//	float isoValue = 100;
+//	float* dataset = loadCharBlock("data/engine.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+
+//	sizeX = 63;
+//	sizeY = 63;
+//	sizeZ = 63;
 //	float isoValue = 80;
-//	float* dataset = loadFloatBlock("data/aneurism.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
-	float isoValue = 100000;
-	float* dataset = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
+//	float* dataset = loadCharBlock("data/fuel.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
 
 //	sizeX = 40;
 //	sizeY = 40;
 //	sizeZ = 40;
 //	float isoValue = 80;
-//	float* dataset = loadFloatBlock("data/sin.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+//	float* dataset = loadCharBlock("data/sin.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+
+//	sizeX = 31;
+//	sizeY = 31;
+//	sizeZ = 31;
+//	float isoValue = 80;
+//	float* dataset = loadCharBlock("data/bucky.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
 
 //	cl_int4 offset = {{0, 0, 0, 0}};
 
