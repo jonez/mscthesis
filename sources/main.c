@@ -240,11 +240,11 @@ int main(int argc, char** argv) {
 	float distanceZ = 1.0f;
 
 
-	sizeX = 255;
-	sizeY = 255;
-	sizeZ = 255;
-	float isoValue = 50;
-	float* dataset = loadCharBlock("data/skull.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+//	sizeX = 255;
+//	sizeY = 255;
+//	sizeZ = 255;
+//	float isoValue = 80;
+//	float* dataset = loadCharBlock("data/skull.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
 
 //	sizeX = 255;
 //	sizeY = 255;
@@ -252,11 +252,11 @@ int main(int argc, char** argv) {
 //	float isoValue = -100000;
 //	float* dataset = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
 
-//	sizeX = 255;
-//	sizeY = 255;
-//	sizeZ = 127;
-//	float isoValue = 100;
-//	float* dataset = loadCharBlock("data/engine.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+	sizeX = 255;
+	sizeY = 255;
+	sizeZ = 127;
+	float isoValue = 100;
+	float* dataset = loadCharBlock("data/engine.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
 
 //	sizeX = 63;
 //	sizeY = 63;
