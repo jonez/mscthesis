@@ -32,7 +32,8 @@ typedef struct mcdMemParts* mcdMemParts;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int dispatch(float*				/* inputDataSet */,
+int dispatch(int				/* device */,
+			 float*				/* inputDataSet */,
 			 float				/* isoValue */,
 //			 cl_float4			/* valuesDistance */,
 			 float				/* valuesDistanceX */,

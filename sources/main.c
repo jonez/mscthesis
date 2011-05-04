@@ -232,49 +232,89 @@ int main(int argc, char** argv) {
 //	clsTestScan();
 //	test();
 
-	clhSetVerbose(FALSE);
-	clsSetVerbose(FALSE);
+	int device = (argc < 2) ? 0 : atoi(argv[1]);
+	int datasetCase = (argc < 3) ? 0 : atoi(argv[2]);		
+
+	clhSetVerbose(TRUE);
+	clsSetVerbose(TRUE);
 
 	float distanceX = 1.0f;
 	float distanceY = 1.0f;
 	float distanceZ = 1.0f;
+	
+	float isoValue = 0;
+	float* dataset = NULL;
 
+	switch(datasetCase) {
+	
+	case 0 :
+		sizeX = 255;
+		sizeY = 255;
+		sizeZ = 255;
+		isoValue = 50;
+		dataset = loadCharBlock("data/skull.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+		break;
 
-//	sizeX = 255;
-//	sizeY = 255;
-//	sizeZ = 255;
-//	float isoValue = 80;
-//	float* dataset = loadCharBlock("data/skull.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+	case 1 :
+		sizeX = 255;
+		sizeY = 255;
+		sizeZ = 127;
+		isoValue = 80;
+		dataset = loadCharBlock("data/engine.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+		break;
 
-//	sizeX = 255;
-//	sizeY = 255;
-//	sizeZ = 255;
-//	float isoValue = -100000;
-//	float* dataset = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
+	case 2 :
+		sizeX = 255;
+		sizeY = 255;
+		sizeZ = 255;
+		isoValue = 50;
+		dataset = loadCharBlock("data/aneurism.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+		break;
 
-	sizeX = 255;
-	sizeY = 255;
-	sizeZ = 127;
-	float isoValue = 100;
-	float* dataset = loadCharBlock("data/engine.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+	case 3 :
+		sizeX = 63;
+		sizeY = 63;
+		sizeZ = 63;
+		isoValue = 80;
+		dataset = loadCharBlock("data/fuel.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+		break;
 
-//	sizeX = 63;
-//	sizeY = 63;
-//	sizeZ = 63;
-//	float isoValue = 80;
-//	float* dataset = loadCharBlock("data/fuel.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+	case 4 :
+		sizeX = 40;
+		sizeY = 40;
+		sizeZ = 40;
+		isoValue = 80;
+		dataset = loadCharBlock("data/sin.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+		break;
 
-//	sizeX = 40;
-//	sizeY = 40;
-//	sizeZ = 40;
-//	float isoValue = 80;
-//	float* dataset = loadCharBlock("data/sin.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+	case 5 :
+		sizeX = 31;
+		sizeY = 31;
+		sizeZ = 31;
+		isoValue = 80;
+		dataset = loadCharBlock("data/bucky.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+		break;
+		
+	
+	case 6 :
+		sizeX = 255;
+		sizeY = 255;
+		sizeZ = 255;
+		isoValue = -100000;
+		dataset = makeFloatBlock(sizeX + 1, sizeY + 1, sizeZ + 1);
+		break;
 
-//	sizeX = 31;
-//	sizeY = 31;
-//	sizeZ = 31;
-//	float isoValue = 80;
-//	float* dataset = loadCharBlock("data/bucky.raw", sizeX + 1, sizeY + 1, sizeZ + 1);
+	default :
+		goto ret;	
+		
+	}
+	
+	printf("Dataset: sizeX = %zu; sizeY = %zu; sizeZ = %zu; isoValue = %0.2f\n", 
+			sizeX, sizeY, sizeZ, isoValue);
+	
+
+//	printf("%d values >= %f.2\n", countFloatBlock(dataset, isoValue, sizeX, sizeY, sizeZ), isoValue);
+
 
 //	cl_int4 offset = {{0, 0, 0, 0}};
 
@@ -294,7 +334,7 @@ int main(int argc, char** argv) {
 //	cl_float4* output;
 
 //	runCL(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &geometry, &vbo, &count);
-	dispatch(dataset, isoValue, distanceX, distanceY, distanceZ,
+	dispatch(device, dataset, isoValue, distanceX, distanceY, distanceZ,
 			sizeX, sizeY, sizeZ, &datasetModel, &count, FALSE);
 //	mcRunHost(data, isoValue, sizeX, sizeY, sizeZ, distance, offset, &output, &count);
 
@@ -307,13 +347,13 @@ int main(int argc, char** argv) {
 
 	size_t sum = 0;
 	for(int i = 0; i < count; i++) {
-		printf("%d: %d (%dKB [%d] + %dKB [%d])\n",
+		printf("%d: %zu (%zuKB [%d] + %zuKB [%d])\n",
 				i, datasetModel[i]->size,
 				datasetModel[i]->size * sizeof(cl_float4) / KB, datasetModel[i]->trianglesVBO,
 				datasetModel[i]->size * sizeof(cl_float4) / KB, datasetModel[i]->normalsVBO);
 		sum += datasetModel[i]->size * 2;
 	}
-	printf("sum: %d (%dMB)\n", sum, sum * sizeof(cl_float4) / MB);
+	printf("sum: %zu (%zuMB)\n", sum, sum * sizeof(cl_float4) / MB);
 
 
 //	printf("size: %i, isovalue: %.0f\n\n", size, isoValue);
@@ -366,11 +406,13 @@ int main(int argc, char** argv) {
 //	}
 
 	// Turn the flow of control over to GLUT
+
 	glutMainLoop();
 
 	free(dataset);
 	free(datasetModel);
+
+ret :
 		
 	return 0;
-	
 }

@@ -20,12 +20,17 @@ clock_t getCurrentTime() {
 	return clock();
 }
 
-double calculateDiffTimeInSec(clock_t begin, clock_t end) {
+clock_t getCurrentTimeInMili() {
 
-	return (double)(end - begin) / CLOCKS_PER_SEC;
+	return clock() / (CLOCKS_PER_SEC / 1000);
 }
 
-double calculateDiffTimeInMiliSec(clock_t begin, clock_t end) {
+long calculateDiffTimeInSec(clock_t begin, clock_t end) {
+
+	return (end - begin) / (CLOCKS_PER_SEC / 1000000);
+}
+
+long calculateDiffTimeInMiliSec(clock_t begin, clock_t end) {
 
 	return calculateDiffTimeInSec(begin, end) * 1000;
 }
@@ -80,6 +85,8 @@ float* makeFloatBlock(const int sizeX, const int sizeY, const int sizeZ) {
 						((x - xC) * (x - xC) +
 						 (y - yC) * (y - yC) +
 						 (z - zC) * (z - zC)) * -10;
+						 
+	printf("Float block.\n");
 
 	return block;
 }
@@ -87,8 +94,8 @@ float* makeFloatBlock(const int sizeX, const int sizeY, const int sizeZ) {
 float* loadCharBlock(const char *path, const int szX, const int szY, const int szZ) {
 
 	FILE* fd;
-	long fz = szX * szY * (szZ + 1);
-	long slice = szX * szY;
+	size_t fz = szX * szY * szZ;
+//	long slice = szX * szY;
 	float* data;
 
 	// open file for reading
@@ -111,11 +118,12 @@ float* loadCharBlock(const char *path, const int szX, const int szY, const int s
 //	rewind(fd);
 
 	data = (float*)calloc(fz, sizeof(float));
-	int i = slice;
+	int i = 0;
 	while((data[i++] = fgetc(fd)) != EOF && i < fz);
 
-	for(i = 0; i < slice; i++)
-		data[i] = data[slice + i];
+//	for(i = 0; i < slice; i++)
+//		data[i] = data[slice + i];
 
 	return data;
 }
+

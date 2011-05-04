@@ -32,12 +32,21 @@ void mcdSetVerbose(const int state) {
 ////////////////////////////////////////////////////////////////////////////////
 
 
-int dispatch(float* input, float isoValue,
+int dispatch(int device, float* input, float isoValue,
 			 float valDistX, float valDistY, float valDistZ,
 			 size_t inSizeX, size_t inSizeY, size_t inSizeZ,
 			 mcdMemParts** output, size_t* outSize, int useHost) {
 
-//	int err;
+	cl_int retErr;
+
+	clhResources resources = clhInitResources(NULL, CL_DEVICE_TYPE_GPU, CL_QUEUE_PROFILING_ENABLE, &retErr);
+	if(retErr || MCD_VERBOSE) {
+		clhErrorInfo(retErr, "initializing resources", __FILE__);
+
+		if(retErr) return retErr;
+	}
+	
+	mccInit(resources);
 
 	int steps = 32;
 	size_t stackSize = inSizeZ;
@@ -55,35 +64,38 @@ int dispatch(float* input, float isoValue,
 
 	for(int s = 0; s < stackSize; s += steps, partsCount++) {
 
+		if(s + steps > stackSize)
+			steps = stackSize - s;
+
 		if(s <= 0)
 			valuesZBuffers.s[0] = 0;
 		else
-			valuesZBuffers.s[0] = 1;
+			valuesZBuffers.s[0] = VALUES_BUFFER_SIZE;
 
-		if(s >= s + stackSize)
+		if(s + steps >= stackSize)
 			valuesZBuffers.s[1] = 0;
 		else
-			valuesZBuffers.s[1] = 1;
+			valuesZBuffers.s[1] = VALUES_BUFFER_SIZE;
 
-		if(s + steps > stackSize)
-			steps = stackSize - s;
 
 		cl_uint4 sizes = {{inSizeX, inSizeY, steps, 0}};
 		cl_float4 offsets = {{0.0f, 0.0f, (float)s, 0.0f}};
 		size_t memAddress = (s - valuesZBuffers.s[0]) * stepSize;
 
 		mcdMemParts part = malloc(sizeof(struct mcdMemParts));
+		
+		printf(">>> s: %d, steps: %d\n", s, steps);
 
 		if(useHost)
 			mccHost(&input[memAddress], isoValue, inSizeX, inSizeY, steps,
 					valuesDistance, offsets, &part->triangles, &part->normals, &part->size);
 		else
-			mccCL(&input[memAddress], isoValue, sizes, valuesDistance, offsets, valuesZBuffers,
-					&part->trianglesVBO, &part->normalsVBO, &part->size);
+			mccRunCL(device, &input[memAddress], isoValue, sizes, valuesDistance, offsets,
+					valuesZBuffers,	&part->trianglesVBO, &part->normalsVBO, &part->size);
 
 		parts[partsCount] = part;
 
-		printf(">>> count: %d, s: %d, size: %d\n", partsCount, s, part->size);
+		printf("<<< count: %zu, size: %zu\n", partsCount, part->size);
 
 	}
 

@@ -1,6 +1,0 @@
-aneurism.raw : 256 * 256 * 256 @ int 8bits
-bucky.raw : 32 * 32 * 32 @ int 8bits
-engine.raw : 256 * 256 * 128 @ int 8bits
-fuel.raw : 64 * 64 * 64 @ int 8bits
-sin.raw : 41 * 41 * 41 @ int 8bits
-skull.raw : 256 * 256 * 256 @ int 8bits

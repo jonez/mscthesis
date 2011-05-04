@@ -52,68 +52,67 @@
 // Copyright ( C ) 2008 Apple Inc. All Rights Reserved.
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////
- 
+
 #include "clScan.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <math.h>
+#include <string.h>
 
 #include "common.h"
- 
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define KERNELS_FILE "scan.cl"
+
+#define NUM_BANKS       (16)
+
+#define DEBUG_INFO      (0)
+#define SEPARATOR       ("\n----------------------------------------------------------------------\n")
+
+#define MAX_ERROR       (1e-7)
+#define min(A,B) ((A) < (B) ? (A) : (B))
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static int initialized = FALSE;
 
-#define DEBUG_INFO      (0)
-int     GROUP_SIZE      = 256;
-#define NUM_BANKS       (16)
-#define MAX_ERROR       (1e-7)
-#define SEPARATOR       ("\n----------------------------------------------------------------------\n")
+clhResources			resources;
 
-#define KERNELS_SOURCE_FILE "scan.cl"
- 
-#define min(A,B) ((A) < (B) ? (A) : (B))
- 
-//static int iterations = 1000;
-//static int count      = 1024 * 1024;
- 
+cl_program				cumputeProgram;
+cl_kernel*				computeKernels;
+
+size_t*					wgSizes;
+cl_mem**				scanPartialSums;
+cl_uint*				levelsAllocated;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-cl_platform_id			PlatformId;
-cl_device_id            ComputeDeviceId;
-cl_command_queue        ComputeCommands;
-cl_context              ComputeContext;
-cl_program              ComputeProgram;
-cl_kernel*              ComputeKernels;
-cl_mem*                 ScanPartialSums = 0;
-unsigned int            ElementsAllocated = 0;
-unsigned int            LevelsAllocated = 0;
- 
-////////////////////////////////////////////////////////////////////////////////////////////////////
- 
 enum KernelMethods
 {
-    PRESCAN                             = 0,
-    PRESCAN_STORE_SUM                   = 1,
-    PRESCAN_STORE_SUM_NON_POWER_OF_TWO  = 2,
-    PRESCAN_NON_POWER_OF_TWO            = 3,
-    UNIFORM_ADD                         = 4
+		PRESCAN                             = 0,
+		PRESCAN_STORE_SUM                   = 1,
+		PRESCAN_STORE_SUM_NON_POWER_OF_TWO  = 2,
+		PRESCAN_NON_POWER_OF_TWO            = 3,
+		UNIFORM_ADD                         = 4
 };
- 
+
 static const char* KernelNames[] =
 {
-    "PreScanKernel",
-    "PreScanStoreSumKernel",
-    "PreScanStoreSumNonPowerOfTwoKernel",
-    "PreScanNonPowerOfTwoKernel",
-    "UniformAddKernel"
+		"PreScanKernel",
+		"PreScanStoreSumKernel",
+		"PreScanStoreSumNonPowerOfTwoKernel",
+		"PreScanNonPowerOfTwoKernel",
+		"UniformAddKernel"
 };
- 
+
 static const unsigned int KernelCount = sizeof(KernelNames) / sizeof(char *);
- 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// print something
 
 int	CLS_VERBOSE	= FALSE;
 
@@ -126,13 +125,13 @@ void clsSetVerbose(const int state) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
- 
+
 //uint64_t
 //GetCurrentTime()
 //{
 //    return mach_absolute_time();
 //}
-    
+
 //double
 //SubtractTimeInSec( uint64_t endtime, uint64_t starttime )
 //{
@@ -148,7 +147,7 @@ void clsSetVerbose(const int state) {
 //
 //    return conversion * (double) difference;
 //}
- 
+
 //static char *
 //LoadProgramSourceFromFile(const char *filename)
 //{
@@ -167,444 +166,478 @@ void clsSetVerbose(const int state) {
 //
 //    return source;
 //}
- 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
- 
+
 bool IsPowerOfTwo(int n)
 {
-    return ((n&(n-1))==0);
+	return ((n&(n-1))==0);
 }
- 
+
 int floorPow2(int n)
 {
-    int exp;
-    frexp((float)n, &exp);
-    return 1 << (exp - 1);
+	int exp;
+	frexp((float)n, &exp);
+	return 1 << (exp - 1);
 }
- 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
- 
-int 
-CreatePartialSumBuffers(unsigned int count)
-{
-    ElementsAllocated = count;
- 
-    unsigned int group_size = GROUP_SIZE;
-    unsigned int element_count = count;
- 
-    int level = 0;
- 
-    do
-    {       
-        unsigned int group_count = (int)fmax(1, (int)ceil((float)element_count / (2.0f * group_size)));
-        if (group_count > 1)
-        {
-            level++;
-        }
-        element_count = group_count;
-        
-    } while (element_count > 1);
- 
-    ScanPartialSums = (cl_mem*) malloc(level * sizeof(cl_mem));
-    LevelsAllocated = level;
-    //memset(ScanPartialSums, 0, sizeof(cl_mem) * level);
-    
-    element_count = count;
-    level = 0;
-    
-    do
-    {       
-        unsigned int group_count = (int)fmax(1, (int)ceil((float)element_count / (2.0f * group_size)));
-        if (group_count > 1) 
-        {
-            size_t buffer_size = group_count * sizeof(float);
-            ScanPartialSums[level++] = clCreateBuffer(ComputeContext, CL_MEM_READ_WRITE, buffer_size, NULL, NULL);
-        }
- 
-        element_count = group_count;
- 
-    } while (element_count > 1);
- 
-    return CL_SUCCESS;
+
+int createPartialSumBuffers(const cl_uint deviceIndex, unsigned int count) {
+
+	unsigned int group_size = wgSizes[deviceIndex];
+	unsigned int element_count = count;
+
+	int level = 0;
+
+	do {
+		unsigned int group_count = (int)fmax(1, (int)ceil((float)element_count / (2.0f * group_size)));
+		if (group_count > 1)
+			level++;
+
+		element_count = group_count;
+	} while (element_count > 1);
+
+	scanPartialSums[deviceIndex] = (cl_mem*) calloc(level, sizeof(cl_mem));
+	levelsAllocated[deviceIndex] = level;
+	//	memset(scanPartialSums, 0, sizeof(cl_mem) * level);
+
+	element_count = count;
+	level = 0;
+
+	do {
+		unsigned int group_count = (int)fmax(1, (int)ceil((float)element_count / (2.0f * group_size)));
+		if (group_count > 1) {
+			size_t buffer_size = group_count * sizeof(float);
+			scanPartialSums[deviceIndex][level++] = clCreateBuffer(resources->context, CL_MEM_READ_WRITE, buffer_size, NULL, NULL);
+		}
+
+		element_count = group_count;
+	} while (element_count > 1);
+
+	return CL_SUCCESS;
 }
- 
-void 
-ReleasePartialSums(void)
-{
-    unsigned int i;
-    for (i = 0; i < LevelsAllocated; i++)
-    {
-        clReleaseMemObject(ScanPartialSums[i]);
-    }    
-    
-    free(ScanPartialSums);
-    ScanPartialSums = 0;
-    ElementsAllocated = 0;
-    LevelsAllocated = 0;
+
+void releasePartialSums(int deviceIndex) {
+
+	for(int i = 0; i < levelsAllocated[deviceIndex]; i++)
+		clReleaseMemObject(scanPartialSums[deviceIndex][i]);
+
+	free(scanPartialSums[deviceIndex]);
+	scanPartialSums[deviceIndex] = NULL;
+	levelsAllocated[deviceIndex] = 0;
 }
- 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
- 
+
 int
 PreScan(
-    size_t *global, 
-    size_t *local, 
-    size_t shared, 
-    cl_mem output_data, 
-    cl_mem input_data, 
-    unsigned int n,
-    int group_index, 
-    int base_index)
+		cl_uint deviceIndex,
+		size_t *global,
+		size_t *local,
+		size_t shared,
+		cl_mem output_data,
+		cl_mem input_data,
+		unsigned int n,
+		int group_index,
+		int base_index)
 {
 #if DEBUG_INFO
-    printf("PreScan: Global[%4d] Local[%4d] Shared[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n", 
-        (int)global[0], (int)local[0], (int)shared, group_index, base_index, n);
+	printf("PreScan: Global[%4d] Local[%4d] Shared[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n",
+			(int)global[0], (int)local[0], (int)shared, group_index, base_index, n);
 #endif
- 
-    unsigned int k = PRESCAN;
-    unsigned int a = 0;
- 
-    int err = CL_SUCCESS;
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &output_data);  
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &input_data);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, shared,         0);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &group_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &base_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &n);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    err = CL_SUCCESS;
-    err |= clEnqueueNDRangeKernel(ComputeCommands, ComputeKernels[k], 1, NULL, global, local, 0, NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    return CL_SUCCESS;
+
+	cl_event event;
+//	char infoStr[SMALL_STRING_SIZE];
+
+	unsigned int k = PRESCAN;
+	unsigned int a = 0;
+
+	int err = CL_SUCCESS;
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &output_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &input_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, shared,         0);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &group_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &base_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &n);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+
+	cl_command_queue ComputeCommands = resources->cmdQueues[deviceIndex];
+
+	err = CL_SUCCESS;
+	err |= clEnqueueNDRangeKernel(ComputeCommands, computeKernels[k], 1, NULL, global, local, 0, NULL, &event);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+	
+//	clhGetEventProfilingInfo(event, sizeof(infoStr), infoStr, &err);
+//	printf("Profiling event 'prescan kernel'\n%s", infoStr);
+
+	return CL_SUCCESS;
 }
- 
+
 int
 PreScanStoreSum(
-    size_t *global, 
-    size_t *local, 
-    size_t shared, 
-    cl_mem output_data, 
-    cl_mem input_data, 
-    cl_mem partial_sums,
-    unsigned int n,
-    int group_index, 
-    int base_index)
+		cl_uint deviceIndex,
+		size_t *global,
+		size_t *local,
+		size_t shared,
+		cl_mem output_data,
+		cl_mem input_data,
+		cl_mem partial_sums,
+		unsigned int n,
+		int group_index,
+		int base_index)
 {
 #if DEBUG_INFO
-    printf("PreScanStoreSum: Global[%4d] Local[%4d] Shared[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n", 
-        (int)global[0], (int)local[0], (int)shared, group_index, base_index, n);
+	printf("PreScanStoreSum: Global[%4d] Local[%4d] Shared[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n",
+			(int)global[0], (int)local[0], (int)shared, group_index, base_index, n);
 #endif
- 
-    unsigned int k = PRESCAN_STORE_SUM;
-    unsigned int a = 0;
- 
-    int err = CL_SUCCESS;
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &output_data);  
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &input_data);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &partial_sums);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, shared,         0);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &group_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &base_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &n);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    err = CL_SUCCESS;
-    err |= clEnqueueNDRangeKernel(ComputeCommands, ComputeKernels[k], 1, NULL, global, local, 0, NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
-    
-    return CL_SUCCESS;
+
+	cl_event event;
+//	char infoStr[SMALL_STRING_SIZE];
+
+	unsigned int k = PRESCAN_STORE_SUM;
+	unsigned int a = 0;
+
+	int err = CL_SUCCESS;
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &output_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &input_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &partial_sums);
+	err |= clSetKernelArg(computeKernels[k],  a++, shared,         0);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &group_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &base_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &n);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+
+	cl_command_queue ComputeCommands = resources->cmdQueues[deviceIndex];
+
+	err = CL_SUCCESS;
+	err |= clEnqueueNDRangeKernel(ComputeCommands, computeKernels[k], 1, NULL, global, local, 0, NULL, &event);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+	
+//	clhGetEventProfilingInfo(event, sizeof(infoStr), infoStr, &err);
+//	printf("Profiling event 'prescan store sum kernel'\n%s", infoStr);
+
+	return CL_SUCCESS;
 }
- 
+
 int
 PreScanStoreSumNonPowerOfTwo(
-    size_t *global, 
-    size_t *local, 
-    size_t shared, 
-    cl_mem output_data, 
-    cl_mem input_data, 
-    cl_mem partial_sums,
-    unsigned int n,
-    int group_index, 
-    int base_index)
+		cl_uint deviceIndex,
+		size_t *global,
+		size_t *local,
+		size_t shared,
+		cl_mem output_data,
+		cl_mem input_data,
+		cl_mem partial_sums,
+		unsigned int n,
+		int group_index,
+		int base_index)
 {
 #if DEBUG_INFO
-    printf("PreScanStoreSumNonPowerOfTwo: Global[%4d] Local[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n", 
-        (int)global[0], (int)local[0], group_index, base_index, n);
+	printf("PreScanStoreSumNonPowerOfTwo: Global[%4d] Local[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n",
+			(int)global[0], (int)local[0], group_index, base_index, n);
 #endif
- 
-    unsigned int k = PRESCAN_STORE_SUM_NON_POWER_OF_TWO;
-    unsigned int a = 0;
- 
-    int err = CL_SUCCESS;
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &output_data);  
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &input_data);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &partial_sums);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, shared,         0);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &group_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &base_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &n);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    err = CL_SUCCESS;
-    err |= clEnqueueNDRangeKernel(ComputeCommands, ComputeKernels[k], 1, NULL, global, local, 0, NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    return CL_SUCCESS;
+
+	cl_event event;
+//	char infoStr[SMALL_STRING_SIZE];
+
+	unsigned int k = PRESCAN_STORE_SUM_NON_POWER_OF_TWO;
+	unsigned int a = 0;
+
+	int err = CL_SUCCESS;
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &output_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &input_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &partial_sums);
+	err |= clSetKernelArg(computeKernels[k],  a++, shared,         0);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &group_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &base_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &n);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+
+	cl_command_queue ComputeCommands = resources->cmdQueues[deviceIndex];
+
+	err = CL_SUCCESS;
+	err |= clEnqueueNDRangeKernel(ComputeCommands, computeKernels[k], 1, NULL, global, local, 0, NULL, &event);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+	
+//	clhGetEventProfilingInfo(event, sizeof(infoStr), infoStr, &err);
+//	printf("Profiling event 'prescan store sum np2 kernel'\n%s", infoStr);
+
+	return CL_SUCCESS;
 }
- 
+
 int
 PreScanNonPowerOfTwo(
-    size_t *global, 
-    size_t *local, 
-    size_t shared, 
-    cl_mem output_data, 
-    cl_mem input_data, 
-    unsigned int n,
-    int group_index, 
-    int base_index)
+		cl_uint deviceIndex,
+		size_t *global,
+		size_t *local,
+		size_t shared,
+		cl_mem output_data,
+		cl_mem input_data,
+		unsigned int n,
+		int group_index,
+		int base_index)
 {
 #if DEBUG_INFO
-    printf("PreScanNonPowerOfTwo: Global[%4d] Local[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n", 
-        (int)global[0], (int)local[0], group_index, base_index, n);
+	printf("PreScanNonPowerOfTwo: Global[%4d] Local[%4d] BlockIndex[%4d] BaseIndex[%4d] Entries[%d]\n",
+			(int)global[0], (int)local[0], group_index, base_index, n);
 #endif
- 
-    unsigned int k = PRESCAN_NON_POWER_OF_TWO;
-    unsigned int a = 0;
- 
-    int err = CL_SUCCESS;
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &output_data);  
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &input_data);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, shared,         0);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &group_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &base_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &n);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    err = CL_SUCCESS;
-    err |= clEnqueueNDRangeKernel(ComputeCommands, ComputeKernels[k], 1, NULL, global, local, 0, NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
-    return CL_SUCCESS;
+
+	cl_event event;
+//	char infoStr[SMALL_STRING_SIZE];
+
+	unsigned int k = PRESCAN_NON_POWER_OF_TWO;
+	unsigned int a = 0;
+
+	int err = CL_SUCCESS;
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &output_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &input_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, shared,         0);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &group_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &base_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &n);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+
+	cl_command_queue ComputeCommands = resources->cmdQueues[deviceIndex];
+
+	err = CL_SUCCESS;
+	err |= clEnqueueNDRangeKernel(ComputeCommands, computeKernels[k], 1, NULL, global, local, 0, NULL, &event);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+	
+//	clhGetEventProfilingInfo(event, sizeof(infoStr), infoStr, &err);
+//	printf("Profiling event 'prescan np2 kernel'\n%s", infoStr);
+	
+	return CL_SUCCESS;
 }
- 
+
 int
 UniformAdd(
-    size_t *global, 
-    size_t *local, 
-    cl_mem output_data, 
-    cl_mem partial_sums, 
-    unsigned int n, 
-    unsigned int group_offset, 
-    unsigned int base_index)
+		cl_uint deviceIndex,
+		size_t *global,
+		size_t *local,
+		cl_mem output_data,
+		cl_mem partial_sums,
+		unsigned int n,
+		unsigned int group_offset,
+		unsigned int base_index)
 {
 #if DEBUG_INFO
-    printf("UniformAdd: Global[%4d] Local[%4d] BlockOffset[%4d] BaseIndex[%4d] Entries[%d]\n", 
-        (int)global[0], (int)local[0], group_offset, base_index, n);
+	printf("UniformAdd: Global[%4d] Local[%4d] BlockOffset[%4d] BaseIndex[%4d] Entries[%d]\n",
+			(int)global[0], (int)local[0], group_offset, base_index, n);
 #endif
- 
-    unsigned int k = UNIFORM_ADD;
-    unsigned int a = 0;
- 
-    int err = CL_SUCCESS;
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &output_data);  
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_mem), &partial_sums);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(float),  0);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &group_offset);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &base_index);
-    err |= clSetKernelArg(ComputeKernels[k],  a++, sizeof(cl_int), &n);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    err = CL_SUCCESS;
-    err |= clEnqueueNDRangeKernel(ComputeCommands, ComputeKernels[k], 1, NULL, global, local, 0, NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
-        return EXIT_FAILURE;
-    }
- 
-    return CL_SUCCESS;
+
+	cl_event event;
+//	char infoStr[SMALL_STRING_SIZE];
+
+	unsigned int k = UNIFORM_ADD;
+	unsigned int a = 0;
+
+	int err = CL_SUCCESS;
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &output_data);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_mem), &partial_sums);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(float),  0);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &group_offset);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &base_index);
+	err |= clSetKernelArg(computeKernels[k],  a++, sizeof(cl_int), &n);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to set kernel arguments!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+
+	cl_command_queue ComputeCommands = resources->cmdQueues[deviceIndex];
+
+	err = CL_SUCCESS;
+	err |= clEnqueueNDRangeKernel(ComputeCommands, computeKernels[k], 1, NULL, global, local, 0, NULL, &event);
+	if (err != CL_SUCCESS)
+	{
+		printf("Error: %s: Failed to execute kernel!\n", KernelNames[k]);
+		return EXIT_FAILURE;
+	}
+	
+//	clhGetEventProfilingInfo(event, sizeof(infoStr), infoStr, &err);
+//	printf("Profiling event 'uniform add kernel'\n%s", infoStr);
+
+	return CL_SUCCESS;
 }
- 
+
 int 
 PreScanBufferRecursive(
-    cl_mem output_data, 
-    cl_mem input_data, 
-    int max_group_size,
-    int max_work_item_count,
-    int element_count, 
-    int level)
+		cl_uint deviceIndex,
+		cl_mem output_data,
+		cl_mem input_data,
+		int max_group_size,
+		int max_work_item_count,
+		int element_count,
+		int level)
 {
-    unsigned int group_size = max_group_size; 
-    unsigned int group_count = (int)fmax(1.0f, (int)ceil((float)element_count / (2.0f * group_size)));
-    unsigned int work_item_count = 0;
- 
-    if (group_count > 1)
-        work_item_count = group_size;
-    else if (IsPowerOfTwo(element_count))
-        work_item_count = element_count / 2;
-    else
-        work_item_count = floorPow2(element_count);
-        
-    work_item_count = (work_item_count > max_work_item_count) ? max_work_item_count : work_item_count;
- 
-    unsigned int element_count_per_group = work_item_count * 2;
-    unsigned int last_group_element_count = element_count - (group_count-1) * element_count_per_group;
-    unsigned int remaining_work_item_count = (int)fmax(1.0f, last_group_element_count / 2);
-    remaining_work_item_count = (remaining_work_item_count > max_work_item_count) ? max_work_item_count : remaining_work_item_count;
-    unsigned int remainder = 0;
-    size_t last_shared = 0;
- 
-    
-    if (last_group_element_count != element_count_per_group)
-    {
-        remainder = 1;
- 
-        if(!IsPowerOfTwo(last_group_element_count))
-            remaining_work_item_count = floorPow2(last_group_element_count);    
-        
-        remaining_work_item_count = (remaining_work_item_count > max_work_item_count) ? max_work_item_count : remaining_work_item_count;
-        unsigned int padding = (2 * remaining_work_item_count) / NUM_BANKS;
-        last_shared = sizeof(float) * (2 * remaining_work_item_count + padding);
-    }
- 
-    remaining_work_item_count = (remaining_work_item_count > max_work_item_count) ? max_work_item_count : remaining_work_item_count;
-    size_t global[] = { (int)fmax(1, group_count - remainder) * work_item_count, 1 };
-    size_t local[]  = { work_item_count, 1 };  
- 
-    unsigned int padding = element_count_per_group / NUM_BANKS;
-    size_t shared = sizeof(float) * (element_count_per_group + padding);
-    
-    cl_mem partial_sums = ScanPartialSums[level];
-    int err = CL_SUCCESS;
-    
-    if (group_count > 1)
-    {
-        err = PreScanStoreSum(global, local, shared, output_data, input_data, partial_sums, work_item_count * 2, 0, 0);
-        if(err != CL_SUCCESS)
-            return err;
-            
-        if (remainder)
-        {
-            size_t last_global[] = { 1 * remaining_work_item_count, 1 };
-            size_t last_local[]  = { remaining_work_item_count, 1 };  
- 
-            err = PreScanStoreSumNonPowerOfTwo(
-                    last_global, last_local, last_shared, 
-                    output_data, input_data, partial_sums,
-                    last_group_element_count, 
-                    group_count - 1, 
-                    element_count - last_group_element_count);    
-        
-            if(err != CL_SUCCESS)
-                return err;         
-            
-        }
- 
-        err = PreScanBufferRecursive(partial_sums, partial_sums, max_group_size, max_work_item_count, group_count, level + 1);
-        if(err != CL_SUCCESS)
-            return err;
-            
-        err = UniformAdd(global, local, output_data, partial_sums,  element_count - last_group_element_count, 0, 0);
-        if(err != CL_SUCCESS)
-            return err;
-        
-        if (remainder)
-        {
-            size_t last_global[] = { 1 * remaining_work_item_count, 1 };
-            size_t last_local[]  = { remaining_work_item_count, 1 };  
- 
-            err = UniformAdd(
-                    last_global, last_local, 
-                    output_data, partial_sums,
-                    last_group_element_count, 
-                    group_count - 1, 
-                    element_count - last_group_element_count);
-                
-            if(err != CL_SUCCESS)
-                return err;
-        }
-    }
-    else if (IsPowerOfTwo(element_count))
-    {
-        err = PreScan(global, local, shared, output_data, input_data, work_item_count * 2, 0, 0);
-        if(err != CL_SUCCESS)
-            return err;
-    }
-    else
-    {
-        err = PreScanNonPowerOfTwo(global, local, shared, output_data, input_data, element_count, 0, 0);
-        if(err != CL_SUCCESS)
-            return err;
-    }
- 
-    return CL_SUCCESS;
+	unsigned int group_size = max_group_size;
+	unsigned int group_count = (int)fmax(1.0f, (int)ceil((float)element_count / (2.0f * group_size)));
+	unsigned int work_item_count = 0;
+
+	if (group_count > 1)
+		work_item_count = group_size;
+	else if (IsPowerOfTwo(element_count))
+		work_item_count = element_count / 2;
+	else
+		work_item_count = floorPow2(element_count);
+
+	work_item_count = (work_item_count > max_work_item_count) ? max_work_item_count : work_item_count;
+
+	unsigned int element_count_per_group = work_item_count * 2;
+	unsigned int last_group_element_count = element_count - (group_count-1) * element_count_per_group;
+	unsigned int remaining_work_item_count = (int)fmax(1.0f, last_group_element_count / 2);
+	remaining_work_item_count = (remaining_work_item_count > max_work_item_count) ? max_work_item_count : remaining_work_item_count;
+	unsigned int remainder = 0;
+	size_t last_shared = 0;
+
+
+	if (last_group_element_count != element_count_per_group)
+	{
+		remainder = 1;
+
+		if(!IsPowerOfTwo(last_group_element_count))
+			remaining_work_item_count = floorPow2(last_group_element_count);
+
+		remaining_work_item_count = (remaining_work_item_count > max_work_item_count) ? max_work_item_count : remaining_work_item_count;
+		unsigned int padding = (2 * remaining_work_item_count) / NUM_BANKS;
+		last_shared = sizeof(float) * (2 * remaining_work_item_count + padding);
+	}
+
+	remaining_work_item_count = (remaining_work_item_count > max_work_item_count) ? max_work_item_count : remaining_work_item_count;
+	size_t global[] = { (int)fmax(1, group_count - remainder) * work_item_count, 1 };
+	size_t local[]  = { work_item_count, 1 };
+
+	unsigned int padding = element_count_per_group / NUM_BANKS;
+	size_t shared = sizeof(float) * (element_count_per_group + padding);
+
+	cl_mem partial_sums = scanPartialSums[deviceIndex][level];
+	int err = CL_SUCCESS;
+
+	if (group_count > 1)
+	{
+		err = PreScanStoreSum(deviceIndex, global, local, shared, output_data, input_data, partial_sums, work_item_count * 2, 0, 0);
+		if(err != CL_SUCCESS)
+			return err;
+
+		if (remainder)
+		{
+			size_t last_global[] = { 1 * remaining_work_item_count, 1 };
+			size_t last_local[]  = { remaining_work_item_count, 1 };
+
+			err = PreScanStoreSumNonPowerOfTwo(deviceIndex,
+					last_global, last_local, last_shared,
+					output_data, input_data, partial_sums,
+					last_group_element_count,
+					group_count - 1,
+					element_count - last_group_element_count);
+
+			if(err != CL_SUCCESS)
+				return err;
+
+		}
+
+		err = PreScanBufferRecursive(deviceIndex, partial_sums, partial_sums, max_group_size, max_work_item_count, group_count, level + 1);
+		if(err != CL_SUCCESS)
+			return err;
+
+		err = UniformAdd(deviceIndex, global, local, output_data, partial_sums,  element_count - last_group_element_count, 0, 0);
+		if(err != CL_SUCCESS)
+			return err;
+
+		if (remainder)
+		{
+			size_t last_global[] = { 1 * remaining_work_item_count, 1 };
+			size_t last_local[]  = { remaining_work_item_count, 1 };
+
+			err = UniformAdd(deviceIndex,
+					last_global, last_local,
+					output_data, partial_sums,
+					last_group_element_count,
+					group_count - 1,
+					element_count - last_group_element_count);
+
+			if(err != CL_SUCCESS)
+				return err;
+		}
+	}
+	else if (IsPowerOfTwo(element_count))
+	{
+		err = PreScan(deviceIndex, global, local, shared, output_data, input_data, work_item_count * 2, 0, 0);
+		if(err != CL_SUCCESS)
+			return err;
+	}
+	else
+	{
+		err = PreScanNonPowerOfTwo(deviceIndex, global, local, shared, output_data, input_data, element_count, 0, 0);
+		if(err != CL_SUCCESS)
+			return err;
+	}
+
+	return CL_SUCCESS;
 }
- 
+
 void 
 PreScanBuffer(
-    cl_mem output_data, 
-    cl_mem input_data, 
-    unsigned int max_group_size,
-    unsigned int max_work_item_count,
-    unsigned int element_count)
+		cl_uint deviceIndex,
+		cl_mem output_data,
+		cl_mem input_data,
+		unsigned int max_group_size,
+		unsigned int max_work_item_count,
+		unsigned int element_count)
 {
-    PreScanBufferRecursive(output_data, input_data, max_group_size, max_work_item_count, element_count, 0);
+	PreScanBufferRecursive(deviceIndex, output_data, input_data, max_group_size, max_work_item_count, element_count, 0);
 }
- 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
- 
+
 void ScanReference( float* reference, float* input, const unsigned int count) 
 {
-    reference[0] = 0;
-    double total_sum = 0;
-    
-    unsigned int i = 1;
-    for( i = 1; i < count; ++i) 
-    {
-        total_sum += input[i-1];
-        reference[i] = input[i-1] + reference[i-1];
-    }
-    if (total_sum != reference[count-1])
-        printf("Warning: Exceeding single-precision accuracy.  Scan will be inaccurate.\n");
+	reference[0] = 0;
+	double total_sum = 0;
+
+	unsigned int i = 1;
+	for( i = 1; i < count; ++i)
+	{
+		total_sum += input[i-1];
+		reference[i] = input[i-1] + reference[i-1];
+	}
+	if (total_sum != reference[count-1])
+		printf("Warning: Exceeding single-precision accuracy.  Scan will be inaccurate.\n");
 }
- 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //float clsScanFromHost(const clhResources resources, const int deviceIndex,
@@ -687,50 +720,69 @@ void ScanReference( float* reference, float* input, const unsigned int count)
 //	return outputBuffer;
 //}
 
-cl_mem clsScanFromDevice(const clhResources resources, const int deviceIndex,
-						 const cl_mem inputBuffer, const size_t size,
-						 cl_float* sum, cl_int* err) {
+cl_int clsInit(const clhResources initializedResources) {
 
-	cl_mem			outputBuffer;
-	cl_float		retSum[2];
+	cl_int		retErr;
+	cl_uint		devCount = resources->devCount;
+
+	if(initializedResources)
+		resources = initializedResources;
+	else {
+		resources = clhInitResources(NULL, 0, 0, &retErr);
+		if(retErr) return retErr;
+	}
+
+	cumputeProgram = clhBuildProgramFromFile(KERNELS_FILE, resources, &retErr);
+	if(retErr) return retErr;
+
+	wgSizes = (size_t*)calloc(devCount, sizeof(size_t));
+	for(int i = 0; i < devCount; i++)
+		wgSizes[i] = resources->mwgSizes[i];
+
+	scanPartialSums = (cl_mem**)calloc(devCount, sizeof(cl_mem*));
+	levelsAllocated = (unsigned int*)calloc(devCount, sizeof(unsigned int));
+
+	computeKernels = (cl_kernel*)malloc(KernelCount * sizeof(cl_kernel));
+	for(int i = 0; i < KernelCount; i++) {
+		// Create each compute kernel from within the program
+		computeKernels[i] = clCreateKernel(cumputeProgram, KernelNames[i], &retErr);
+		if(CLS_VERBOSE || !computeKernels[i] || retErr) {
+			clhErrorInfo(retErr, "creating kernel", "clScan");
+
+			if(retErr) return retErr;
+		}
+
+		for(int j = 0; j < devCount; j++) {
+			size_t kwgSize = clhGetKernelMaxWorkGroupSize(computeKernels[i], resources->devices[j], &retErr);
+			if(retErr) return retErr;
+
+			wgSizes[j] = min(wgSizes[j], kwgSize);
+		}
+	}
+
+	initialized = TRUE;
+
+	return retErr;
+}
+
+cl_mem clsScanFromDevice(const clhResources initResources, const int deviceIndex,
+		const cl_mem inputBuffer, const size_t size,
+		cl_float* sum, cl_int* err) {
+
 	cl_int			retErr;
 
-	ComputeContext 		= resources->context;
-	ComputeDeviceId		= resources->devices[deviceIndex];
-	ComputeCommands		= resources->cmdQueues[deviceIndex];
-	GROUP_SIZE			= resources->wgSizes[deviceIndex] / 2;
-
-	if(!initialized) {
-
-		ComputeProgram = clhBuildProgramFromFile(KERNELS_SOURCE_FILE, resources, &retErr);
-
-		ComputeKernels = (cl_kernel*)malloc(KernelCount * sizeof(cl_kernel));
-		for(int i = 0; i < KernelCount; i++) {
-			// Create each compute kernel from within the program
-			ComputeKernels[i] = clCreateKernel(ComputeProgram, KernelNames[i], &retErr);
-			if(CLS_VERBOSE || !ComputeKernels[i] || retErr) {
-				clhErrorInfo(retErr, "creating kernel", "clScan");
-
-				if(retErr) {
-					if(err) *err = retErr;
-					return NULL;
-				}
-			}
-
-			size_t wgSize = clhGetKernelMaxWorkGroupSize(ComputeKernels[i], ComputeDeviceId, &retErr);
+	if(!initialized)
+		if((retErr = clsInit(initResources)))
 			if(retErr) {
 				if(err) *err = retErr;
 				return NULL;
 			}
 
-			GROUP_SIZE = min(GROUP_SIZE, wgSize);
-		}
+	cl_context computeContext = resources->context;
+	cl_command_queue computeCommands = resources->cmdQueues[deviceIndex];
 
-		initialized = TRUE;
 
-	}
-
-	outputBuffer = clCreateBuffer(ComputeContext, CL_MEM_READ_WRITE, sizeof(cl_float) * size, NULL, &retErr);
+	cl_mem outputBuffer = clCreateBuffer(computeContext, CL_MEM_READ_WRITE, sizeof(cl_float) * size, NULL, &retErr);
 	if(CLS_VERBOSE || !outputBuffer || retErr) {
 		clhErrorInfo(retErr, "creating output buffer", "clScan");
 
@@ -740,10 +792,11 @@ cl_mem clsScanFromDevice(const clhResources resources, const int deviceIndex,
 		}
 	}
 
-	CreatePartialSumBuffers(size);
-	PreScanBuffer(outputBuffer, inputBuffer, GROUP_SIZE, GROUP_SIZE, size);
+	unsigned int wgSize = wgSizes[deviceIndex];
+	createPartialSumBuffers(deviceIndex, size);
+	PreScanBuffer(deviceIndex, outputBuffer, inputBuffer, wgSize, wgSize, size);
 
-	retErr = clFinish(ComputeCommands);
+	retErr = clFinish(computeCommands);
 	if(CLS_VERBOSE || !outputBuffer || retErr) {
 		clhErrorInfo(retErr, "flushing command queue", "clScan");
 
@@ -752,27 +805,32 @@ cl_mem clsScanFromDevice(const clhResources resources, const int deviceIndex,
 			return NULL;
 		}
 	}
+	
+
+	
 
 	if(sum) {
-		retErr = clEnqueueReadBuffer(ComputeCommands, inputBuffer, CL_TRUE,
-				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum[0], 0, NULL, NULL);
-		retErr |= clEnqueueReadBuffer(ComputeCommands, outputBuffer, CL_TRUE,
-				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum[1], 0, NULL, NULL);
+		cl_float2 retSum;
+		
+		retErr = clEnqueueReadBuffer(computeCommands, inputBuffer, CL_TRUE,
+				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum.s[0], 0, NULL, NULL);
+		retErr |= clEnqueueReadBuffer(computeCommands, outputBuffer, CL_TRUE,
+				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum.s[1], 0, NULL, NULL);
 		if(CLS_VERBOSE || retErr) {
-				clhErrorInfo(retErr, "retrieving sum", "clScan");
+			clhErrorInfo(retErr, "retrieving sum", "clScan");
 
-				if(retErr) {
-					if(err) *err = retErr;
-					return NULL;
-				}
+			if(retErr) {
+				if(err) *err = retErr;
+				return NULL;
 			}
+		}
 
-		*sum = retSum[0] + retSum[1];
+		*sum = retSum.s[0] + retSum.s[1];
+		printf("sum: %.0f + %.0f = %.0f\n", retSum.s[0], retSum.s[1], *sum);
 	}
 
 	// cleanup
-	ReleasePartialSums();
-
+	releasePartialSums(deviceIndex);
 
 	return outputBuffer;
 }
@@ -782,10 +840,10 @@ void clsRelease() {
 	initialized = FALSE;
 
 	for(int i = 0; i < KernelCount; i++)
-		clReleaseKernel(ComputeKernels[i]);
-	clReleaseProgram(ComputeProgram);
+		clReleaseKernel(computeKernels[i]);
+	clReleaseProgram(cumputeProgram);
 
-	free(ComputeKernels);
+	free(computeKernels);
 
 	printf("%s resources released!\n", __FILE__);
 

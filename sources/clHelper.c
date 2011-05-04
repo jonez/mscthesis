@@ -17,6 +17,7 @@
 //#define GL_GLEXT_PROTOTYPES // use with #include <GL/glext.h>
 
 #include "common.h"
+#include "utilities.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -105,9 +106,9 @@ void clhErrorInfo(const cl_int error, const char* info, const char* source) {
 	const int index = -error;
 
 	if(index >= 0 && index < listSize)
-		printf("%s : %s [@%s]\n", errorList[index], info, source);
+		printf("%s : %s [@%s] - %ldms\n", errorList[index], info, source, getCurrentTimeInMili());
 	else
-		printf("ID ERROR %d : %s [@%s]\n", error, info, source);
+		printf("ID ERROR %d : %s [@%s] - %ldms\n", error, info, source, getCurrentTimeInMili());
 
 }
 
@@ -121,7 +122,7 @@ void clhErrorCheck(const cl_int error, const char* info, const char* source) {
 
 }
 
-// add option to select the platform - now, the first is selected
+// add option to select the platform - currently, the first one is selected
 // ? add fallback to device type specified in 'selectedDeviceType'
 
 clhResources clhInitResources(const char* platformName,
@@ -133,10 +134,10 @@ clhResources clhInitResources(const char* platformName,
 	cl_platform_id 					platform = NULL;
 	cl_device_type 					devType = CL_DEVICE_TYPE_ALL;
 	cl_uint 						devCount = 0;
-	cl_device_id 					*devices = NULL;
+	cl_device_id* 					devices = NULL;
 	cl_context 						context = NULL;
-	cl_command_queue				*cmdQueues = NULL;
-	size_t*							wgSizes;
+	cl_command_queue*				cmdQueues = NULL;
+	size_t*							mwgSizes;
 	cl_ulong*						memSizes;
 	char 							info[SMALL_STRING_SIZE] = "";
 
@@ -144,7 +145,7 @@ clhResources clhInitResources(const char* platformName,
 	// Find OpenCL platform available
 	retErr = clGetPlatformIDs(1, &platform, NULL);
 	if(retErr || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "getting platform", "clHelper");
+		clhErrorInfo(retErr, "getting platform", __FILE__);
 
 		if(retErr) {
 			if(err) *err = retErr;
@@ -166,22 +167,23 @@ clhResources clhInitResources(const char* platformName,
 
 	retErr = clGetDeviceIDs(platform, devType, 0, NULL, &devCount);
 	printf("Found %d device(s) of selected type\n", devCount);
-	if(retErr || !devCount || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "count device(s) of selected type", "clHelper");
+	if(retErr || devCount < 1 || CLH_VERBOSE) {
+		clhErrorInfo(retErr, "count device(s) of selected type", __FILE__);
 
 		// Can't find any device of selected type
-		if(!devCount && devType != CL_DEVICE_TYPE_ALL) {
+		if(devCount < 1 && devType != CL_DEVICE_TYPE_ALL) {
 			devType = CL_DEVICE_TYPE_ALL;
 			retErr = clGetDeviceIDs(platform, devType, 0, NULL, &devCount);
 			printf("Found %d fallback device(s)\n", devCount);
-			if(retErr || CLH_VERBOSE) clhErrorInfo(retErr, "counting fallback device(s)", "clHelper");
+			if(retErr || CLH_VERBOSE) 
+				clhErrorInfo(retErr, "counting fallback device(s)", __FILE__);
 		}
 
 		if(retErr) {
 			if(err) *err = retErr;
 			return NULL;
 		}
-		if(!devCount) {
+		if(devCount < 1) {
 			if(err) *err = CL_DEVICE_NOT_FOUND;
 			return NULL;
 		}
@@ -191,7 +193,7 @@ clhResources clhInitResources(const char* platformName,
 	devices = (cl_device_id*)calloc(devCount, sizeof(cl_device_id));
 	retErr = clGetDeviceIDs(platform, devType, devCount, devices, NULL);
 	if(retErr || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "getting device(s)", "clHelper");
+		clhErrorInfo(retErr, "getting device(s)", __FILE__);
 
 		if(retErr) {
 			if(err) *err = retErr;
@@ -200,10 +202,10 @@ clhResources clhInitResources(const char* platformName,
 	}
 
 	// Get some information about selected devices
-	wgSizes = (size_t*)calloc(devCount, sizeof(size_t));
+	mwgSizes = (size_t*)calloc(devCount, sizeof(size_t));
 	memSizes = (cl_ulong*)calloc(devCount, sizeof(cl_ulong));
 	for(int i = 0; i < devCount; i++) {
-		wgSizes[i] = clhGetDeviceMaxWorkGroupSize(devices[i], &retErr);
+		mwgSizes[i] = clhGetDeviceMaxWorkGroupSize(devices[i], &retErr);
 		if(retErr) {
 			if(err) *err = retErr;
 			return NULL;
@@ -228,6 +230,7 @@ clhResources clhInitResources(const char* platformName,
 	}
 
 	// Create context with all devices
+	//TODO: add back GL and GLX context
 	cl_context_properties contexProperties[] = {
 			 CL_CONTEXT_PLATFORM, (cl_context_properties)(platform),
 			 CL_GL_CONTEXT_KHR, (cl_context_properties)glXGetCurrentContext(),
@@ -237,7 +240,7 @@ clhResources clhInitResources(const char* platformName,
 
 	context = clCreateContext(contexProperties, devCount, devices, NULL, NULL, &retErr);
 	if(retErr || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "creating context", "clHelper");
+		clhErrorInfo(retErr, "creating context", __FILE__);
 
 		if(retErr) {
 			if(err) *err = retErr;
@@ -251,22 +254,26 @@ clhResources clhInitResources(const char* platformName,
 		cmdQueues[i] = clCreateCommandQueue(context, devices[i], cmdQueuesProperties, &retErr);
 		if(retErr || CLH_VERBOSE) {
 			snprintf(info, SMALL_STRING_SIZE, "creating command queue for device %d", i);
-			clhErrorInfo(retErr, info, "clHelper");
+			clhErrorInfo(retErr, info, __FILE__);
 
 			if(retErr) {
+				for(int j = 0; j < i; j++)
+					clReleaseCommandQueue(cmdQueues[j]);
+				clReleaseContext(context);
+			
 				if(err) *err = retErr;
 				return NULL;
 			}
 		}
 	}
 
-	clhResources resources = (clhResources)malloc(sizeof(struct _clhResources));
+	clhResources resources = (clhResources)calloc(1, sizeof(struct _clhResources));
 	resources->context = context;
 	resources->devCount = devCount;
 	resources->devices = devices;
 	resources->context = context;
 	resources->cmdQueues = cmdQueues;
-	resources->wgSizes = wgSizes;
+	resources->mwgSizes = mwgSizes;
 	resources->memSizes = memSizes;
 
 	if(err) *err = retErr;
@@ -274,6 +281,28 @@ clhResources clhInitResources(const char* platformName,
 	return resources;
 }
 
+cl_int clhReleaseResources(clhResources resources) {
+
+	cl_int retErr;
+	
+	retErr = clReleaseContext(resources->context);
+	if(retErr || CLH_VERBOSE)
+		clhErrorInfo(retErr, "releasing context", __FILE__);
+	
+	for(int i = 0; i < resources->devCount; i++)
+		retErr |= clReleaseCommandQueue(resources->cmdQueues[i]);
+		
+	if(retErr || CLH_VERBOSE)
+		clhErrorInfo(retErr, "releasing command queues", __FILE__);
+	
+	free(resources->mwgSizes);
+	free(resources->memSizes);
+	free(resources->cmdQueues);
+	free(resources->devices);
+	free(resources);
+
+	return retErr;
+}
 
 // ? handle memory allocation
 
@@ -293,8 +322,8 @@ char* clhGetPlatformInfo(const cl_platform_id platform, const size_t infoSize, c
 	if(err) *err = retErr;
 
 	if(retErr || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "getting platform information", "clHelper");
-		if(retErr) return NULL;
+		clhErrorInfo(retErr, "getting platform information", __FILE__);
+		if(retErr) return "";
 	}
 
 	snprintf(info, infoSize, "%s from %s (%s)", name, vendor, version);
@@ -319,34 +348,22 @@ char* clhGetDeviceInfo(const cl_device_id device, const size_t infoSize, char* i
 	retErr = clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(name), name, NULL);
 	retErr |= clGetDeviceInfo(device, CL_DEVICE_VENDOR, sizeof(vendor), vendor, NULL);
 	retErr |= clGetDeviceInfo(device, CL_DEVICE_VERSION, sizeof(version), version, NULL);
-	retErr |= clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(coresInfo), &coresInfo, NULL);
-	retErr |= clGetDeviceInfo(device, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(frequencyInfo), &frequencyInfo, NULL);
-	retErr |= clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(globalMem), &globalMem, NULL);
-	retErr |= clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(bufferMem), &bufferMem, NULL);
+	retErr |= clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_uint), &coresInfo, NULL);
+	retErr |= clGetDeviceInfo(device, CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(cl_uint), &frequencyInfo, NULL);
+	retErr |= clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &globalMem, NULL);
+	retErr |= clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &bufferMem, NULL);
 
 	if(err) *err = retErr;
 
 	if(retErr || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "getting device information", "clHelper");
-		if(retErr) return NULL;
+		clhErrorInfo(retErr, "getting device information", __FILE__);
+		if(retErr) return "";
 	}
 
-	snprintf(info, infoSize, "%s from %s (%s, %u computes units at %umhz with %dMB [%dMB])", name, vendor, version, coresInfo, frequencyInfo, (int)(globalMem / MB), (int)(bufferMem / MB));
+	snprintf(info, infoSize, "%s from %s (%s, %u computes units at %umhz with %dMB [%dMB])",
+			name, vendor, version, coresInfo, frequencyInfo, (int)(globalMem / MB), (int)(bufferMem / MB));
+	
 	return info;
-}
-
-size_t clhGetDeviceMaxWorkGroupSize(const cl_device_id device, cl_int* err) {
-
-	cl_int		retErr;
-	size_t		size = 0;
-
-	retErr = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size), &size, NULL);
-	if(retErr || CLH_VERBOSE)
-		clhErrorInfo(retErr, "getting device information: maximum work group size", "clHelper");
-
-	if(err) *err = retErr;
-
-	return size;
 }
 
 cl_ulong clhGetDeviceGlobalMemorySize(const cl_device_id device, cl_int* err) {
@@ -354,9 +371,51 @@ cl_ulong clhGetDeviceGlobalMemorySize(const cl_device_id device, cl_int* err) {
 	cl_int		retErr;
 	cl_ulong	size = 0;
 
-	retErr = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(size), &size, NULL);
+	retErr = clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &size, NULL);
 	if(retErr || CLH_VERBOSE)
-			clhErrorInfo(retErr, "getting device information: global memory size", "clHelper");
+			clhErrorInfo(retErr, "getting device information: global memory size", __FILE__);
+
+	if(err) *err = retErr;
+
+	return size;
+}
+
+cl_ulong clhGetDeviceMaxMemoryAllocSize(const cl_device_id device, cl_int* err) {
+
+	cl_int		retErr;
+	cl_ulong	size = 0;
+
+	retErr = clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(cl_ulong), &size, NULL);
+	if(retErr || CLH_VERBOSE)
+			clhErrorInfo(retErr, "getting device information: max memory alloc size", __FILE__);
+
+	if(err) *err = retErr;
+
+	return size;
+}
+
+cl_uint clhGetDeviceAddressBits(const cl_device_id device, cl_int* err) {
+
+	cl_int		retErr;
+	cl_uint		addrBits = 0;
+
+	retErr = clGetDeviceInfo(device, CL_DEVICE_ADDRESS_BITS, sizeof(cl_uint), &addrBits, NULL);
+	if(retErr || CLH_VERBOSE)
+		clhErrorInfo(retErr, "getting device information: maximum work group size", __FILE__);
+
+	if(err) *err = retErr;
+
+	return addrBits;
+}
+
+size_t clhGetDeviceMaxWorkGroupSize(const cl_device_id device, cl_int* err) {
+
+	cl_int		retErr;
+	size_t		size = 0;
+
+	retErr = clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &size, NULL);
+	if(retErr || CLH_VERBOSE)
+		clhErrorInfo(retErr, "getting device information: maximum work group size", __FILE__);
 
 	if(err) *err = retErr;
 
@@ -368,13 +427,65 @@ size_t clhGetKernelMaxWorkGroupSize(const cl_kernel kernel, const cl_device_id d
 	cl_int		retErr;
 	size_t		size = 0;
 
-	retErr = clGetKernelWorkGroupInfo(kernel, device, CL_KERNEL_WORK_GROUP_SIZE , sizeof(size), &size, NULL);
+	retErr = clGetKernelWorkGroupInfo(kernel, device, CL_KERNEL_WORK_GROUP_SIZE , sizeof(size_t), &size, NULL);
 	if(retErr || CLH_VERBOSE)
-		clhErrorInfo(retErr, "getting kernel information: maximum work group size", "clHelper");
+		clhErrorInfo(retErr, "getting kernel information: maximum work group size", __FILE__);
 
 	if(err) *err = retErr;
 
 	return size;
+}
+
+cl_int clhSetCmdQueueProfilingState(const cl_command_queue cmdQueue, const cl_bool enable) {
+
+	cl_int retErr;
+	
+	retErr = clSetCommandQueueProperty(cmdQueue, CL_QUEUE_PROFILING_ENABLE, enable, NULL);
+	if(retErr || CLH_VERBOSE)
+			clhErrorInfo(retErr, "setting profiling state", __FILE__);
+	
+	return retErr;
+}
+
+char* clhGetEventProfilingInfo(const cl_event event, const size_t infoStrSize, char* infoStr, cl_int* err) {
+
+	cl_int		retErr;
+	cl_int		status = CL_QUEUED;
+	cl_ulong	queue = 0;
+	cl_ulong	submit = 0;
+	cl_ulong	start = 0;
+	cl_ulong	end = 0;
+	
+	retErr = clGetEventInfo(event, CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(cl_int), &status, NULL);
+	if(retErr || CLH_VERBOSE) {
+			clhErrorInfo(retErr, "getting event information", __FILE__);
+			
+			if(retErr) {
+				if(err) *err = retErr;
+				snprintf(infoStr, infoStrSize, "no information!\n");
+				return infoStr;
+			}
+	}
+
+	retErr = clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_QUEUED, sizeof(cl_ulong), &queue, NULL);
+	retErr |= clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_SUBMIT, sizeof(cl_ulong), &submit, NULL);
+	retErr |= clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START, sizeof(cl_ulong), &start, NULL);
+	retErr |= clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(cl_ulong), &end, NULL);
+	if(retErr || CLH_VERBOSE)
+			clhErrorInfo(retErr, "getting event profiling information", __FILE__);
+
+	snprintf(infoStr, infoStrSize, 
+			" queued > submited: %lluns\n"
+			" submited > started: %lluns\n"
+			" started > ended: %lluns\n"
+			" queued > ended: %lluns\n"
+			" status: %sfinished\n",
+			submit - queue, start - submit,	end - start, end - queue,
+			(status != CL_COMPLETE) ? "not " : "");
+
+	if(err) *err = retErr;
+
+	return infoStr;
 }
 
 //cl_int mclGetProgramDevices(cl_program program, cl_device_id *devices, cl_int *deviceCount) {
@@ -399,53 +510,197 @@ size_t clhGetKernelMaxWorkGroupSize(const cl_kernel kernel, const cl_device_id d
 //
 //}
 
-cl_program clhBuildProgramFromSource(const char* source, clhResources resources, cl_int* err) {
+cl_int clhBuildProgram(cl_program program, const clhResources resources) {
+
+	cl_int				retErr;
+	cl_uint				devCount = resources->devCount;
+	cl_device_id* 		devices = resources->devices;
+	
+//	printf("Building program executable\n");
+	retErr = clBuildProgram(program, devCount, devices, OPENCL_COMPILER_OPTIONS, NULL, NULL);
+	if(retErr || CLH_VERBOSE) {
+		clhErrorInfo(retErr, "creating program", __FILE__);
+
+		char log[BIG_STRING_SIZE] = "";
+		for(int i = 0; i < devCount; i++) {
+			printf("Program build log for device %d:\n", i);
+			cl_int infoErr = clGetProgramBuildInfo(program, devices[i], CL_PROGRAM_BUILD_LOG, sizeof(log), log, NULL);
+			if(!infoErr) printf("%s\n", log);
+
+			if(infoErr || CLH_VERBOSE) 
+				clhErrorInfo(infoErr, "getting program build info", __FILE__);
+		}
+
+	}
+
+	return retErr;
+}
+
+cl_program clhBuildProgramFromSource(const char* source, const clhResources resources, cl_int* err) {
 
 	cl_int 			retErr;
 	cl_program		program = NULL;
-	char 			log[BIG_STRING_SIZE] = "";
 
 	// Create the compute program from the source
-	program = clCreateProgramWithSource(resources->context, 1, (const char **)&source, NULL, &retErr);
+	program = clCreateProgramWithSource(resources->context, 1, (const char**)&source, NULL, &retErr);
 	if(retErr || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "creating program from source", "clHelper");
+		clhErrorInfo(retErr, "creating program from source", __FILE__);
 
 		if(retErr) {
 			if(err) *err = retErr;
 			return NULL;
 		}
 	}
-
-//	printf("Building program executable\n");
-	retErr = clBuildProgram(program, resources->devCount, resources->devices, OPENCL_COMPILER_OPTIONS, NULL, NULL);
-	if(retErr || CLH_VERBOSE) {
-		clhErrorInfo(retErr, "creating program", "clHelper");
-
-		for(int i = 0; i < resources->devCount; i++) {
-			printf("Program build log for device %d:\n", i);
-			cl_int infoErr = clGetProgramBuildInfo(program, resources->devices[i], CL_PROGRAM_BUILD_LOG, sizeof(log), log, NULL);
-			if(!infoErr) printf("%s\n", log);
-
-			if(infoErr || CLH_VERBOSE) clhErrorInfo(infoErr, "getting program build info", "clHelper");
-		}
-
-	}
-
+	
+	retErr = clhBuildProgram(program, resources);
+	
 	if(err) *err = retErr;
 
-	return program;
+	return retErr ? NULL : program;
 }
 
-char* clhLoadSourceFile(const char* fn) {
+cl_program clhBuildProgramFromBinaryFile(const char* path, const clhResources resources, cl_int* err) {
 
-	FILE* 		fd = NULL;
-	size_t 		fz = 0;
-	char* 		src = NULL;
+	cl_int 				retErr;
+	cl_uint 			devCount = 0;
+	cl_program			program = NULL;
+	size_t* 			binSizes = NULL;
+	unsigned char** 	binaries = NULL;
+	
+	FILE*				fd = NULL;
+	int					szRet = 0;
+	
+	fd = fopen(path, "rb");
+	if (!fd) {
+		printf("Error while opening %s file.\n", path);
+		retErr = CL_INVALID_VALUE;
+		
+		goto ret;
+	}
+	
+	szRet = fscanf(fd, "devCount : %u\n", &devCount);
+	printf("devCount : %u\n", devCount);
+	binSizes = calloc(devCount, sizeof(size_t));
+	binaries = calloc(devCount, sizeof(unsigned char*));
+	
+	for(int i = 0; i < devCount; i++) {
+		szRet = fscanf(fd, "binSize : %zu\n", &binSizes[i]);
+		printf("szRet = %d; binSize : %zu\n", szRet, binSizes[i]);
 
-	char path[SMALL_STRING_SIZE] = "";
-	snprintf(path, sizeof(path), "%s%s", KERNELS_PATH, fn);
+		binaries[i] = calloc(binSizes[i], sizeof(unsigned char));
+		if(fread(binaries[i], sizeof(unsigned char), binSizes[i], fd) != binSizes[i])
+			printf("Error while reading %s file.\n", path);
+	}
+	
+	
+	// Create the compute program from the source
+	program = clCreateProgramWithBinary(resources->context, devCount, resources->devices,
+			binSizes, (const unsigned char**)binaries, NULL, &retErr);
+	if(retErr || CLH_VERBOSE) {
+		clhErrorInfo(retErr, "creating program from binary", __FILE__);
 
-	// open file for reading
+		if(retErr) {
+			if(err) *err = retErr;
+			return NULL;
+		}
+	}
+	
+	retErr = clhBuildProgram(program, resources);
+	
+ret:
+	
+	free(binSizes);
+	for(int i = 0; i < devCount; i++) 
+		free(binaries[i]);
+	free(binaries);
+	
+	if(err) *err = retErr;
+
+	return retErr ? NULL : program;
+}
+
+cl_int clhStoreProgramBinaryFile(const cl_program program, const char* path) {
+	
+	cl_int 				retErr;
+	cl_uint 			devCount = 0;
+	size_t* 			binSizes;
+	unsigned char** 	binaries;
+
+	retErr = clGetProgramInfo(program, CL_PROGRAM_NUM_DEVICES, sizeof(cl_uint), &devCount, NULL);
+	if(retErr || CLH_VERBOSE) {
+		clhErrorInfo(retErr, "counting program devices", __FILE__);
+
+		if(retErr) return retErr;
+	}
+	
+	binSizes = calloc(devCount, sizeof(size_t));
+	retErr = clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES, devCount * sizeof(size_t), binSizes, NULL);
+	if(retErr || !binSizes || CLH_VERBOSE) {
+		clhErrorInfo(retErr, "getting program binaries sizes", __FILE__);
+
+		if(retErr) return retErr;
+	}
+	
+	size_t binTotalSize = 0; // is it really necessary?
+//	size_t binTotalSizeRet;
+	binaries = calloc(devCount, sizeof(unsigned char*));
+	for(int i = 0; i < devCount; i++) {
+		binaries[i] = calloc(binSizes[i], sizeof(unsigned char));
+		binTotalSize += binSizes[i];	
+	}
+	retErr = clGetProgramInfo(program, CL_PROGRAM_BINARIES, binTotalSize, binaries, NULL /* &binTotalSizeRet */);
+	if(retErr || !binaries || CLH_VERBOSE) {
+		clhErrorInfo(retErr, "getting program binaries", __FILE__);
+
+		if(retErr) goto ret;
+	}
+	
+//	printf("devCount = %u, binTotalSize = %zu, binTotalSizeRet = %zu\n", devCount, binTotalSize, binTotalSizeRet);
+//	for(int i = 0; i < devCount; i++) {
+//		printf("dev%d binSize = %zu\n", i, binSizes[i]);
+//		printf("bin=\n%s\n", binaries[i]);
+//	}
+
+	
+	FILE*		fd = NULL;
+	int			szRet = 0;
+
+	fd = fopen(path, "wb");
+	if (!fd) {
+		printf("Error while creating %s file.\n", path);
+		retErr = CL_INVALID_VALUE;
+		
+		goto ret;
+	}
+	
+	fprintf(fd, "devCount : %u\n", devCount);
+	for(int i = 0; i < devCount; i++) {
+		fprintf(fd, "binSize : %zu\n", binSizes[i]);
+		szRet += fwrite(binaries[i], sizeof(unsigned char), binSizes[i], fd);
+	}
+	if (szRet < binTotalSize) {
+		printf("Error while writing %s file.\n", path);
+		retErr = CL_INVALID_VALUE;
+	}
+	
+	fclose(fd);
+	
+ret:
+	
+	free(binSizes);
+	for(int i = 0; i < devCount; i++) 
+		free(binaries[i]);
+	free(binaries);
+	
+	return retErr;
+}
+	
+unsigned char* clhLoadFile(const char* path) {
+
+	FILE* 				fd = NULL;
+	size_t 				fz = 0;
+	unsigned char* 		src = NULL;
+
 	fd = fopen(path, "r");
 	if (!fd) {
 		printf("Error while opening %s file.\n", path);
@@ -462,8 +717,8 @@ char* clhLoadSourceFile(const char* fn) {
 	fz = ftell(fd);
 	rewind(fd);
 
-	src = (char*)malloc(fz + 1);
-	if(fread(src, sizeof(char), fz, fd) != fz) {
+	src = (unsigned char*)malloc(fz + 1);
+	if(fread(src, sizeof(unsigned char), fz, fd) != fz) {
 		printf("Error while reading %s file.\n", path);
 		return NULL;
 	}
@@ -474,21 +729,44 @@ char* clhLoadSourceFile(const char* fn) {
 	return src;
 }
 
-cl_program clhBuildProgramFromFile(const char *sourceFile, clhResources resources, cl_int* err) {
+cl_program clhBuildProgramFromFile(const char *sourceFile, const clhResources resources, cl_int* err) {
 
-	printf("Creating program from file '%s'.\n", sourceFile);
-	char* source = clhLoadSourceFile(sourceFile);
+	cl_int			retErr;
+	cl_program		program = NULL;
+	char 			path[SMALL_STRING_SIZE] = "";
+
+	snprintf(path, sizeof(path), "%s/%s.%s", KERNELS_BIN_PATH, sourceFile, KERNELS_BIN_EXT);
+	printf("Creating program from binary file '%s'.\n", path);
+	program = clhBuildProgramFromBinaryFile(path, resources, &retErr);
+	if(!retErr) goto ret;
+
+	printf("Failed to create program from binary file, using source instead.\n");
+
+	snprintf(path, sizeof(path), "%s/%s", KERNELS_SRC_PATH, sourceFile);
+	printf("Creating program from souce file '%s'.\n", path);
+	char* source = (char*)clhLoadFile(path);
 	if(!source){
-		printf("Failed to load kernel source from file!\n");
+		printf("Failed to load source from file!\n");
+		retErr = CL_INVALID_VALUE;
 
-		if(err) *err = CL_INVALID_VALUE;
-		return NULL;
+		goto ret;
 	}
 
-//	free(source);
+	program = clhBuildProgramFromSource(source, resources, &retErr);
+	free(source);
+	if(retErr) goto ret;
 
-	return clhBuildProgramFromSource(source, resources, err);
-
+	snprintf(path, sizeof(path), "%s/%s.%s", KERNELS_BIN_PATH, sourceFile, KERNELS_BIN_EXT);
+	if((retErr = clhStoreProgramBinaryFile(program, path)))
+		printf("Failed to store program binary file in '%s'.\n", path);
+	else
+		printf("Stored program binary file in '%s'.\n", path);
+	
+ret:
+	
+	if(err) *err = retErr;
+	
+	return program;
 }
 
 GLuint clhCreateVBO(GLsizei size) {
@@ -524,7 +802,7 @@ cl_mem clhBindNewCLBufferToVBO(cl_context context, size_t size, GLuint vbo,
 
 	vboBuffer = clCreateFromGLBuffer(context, CL_MEM_READ_WRITE, vbo, &retErr);
 	if(retErr || CLH_VERBOSE)
-		clhErrorInfo(retErr, "binding new CL buffer to VBO", "clHelper");
+		clhErrorInfo(retErr, "binding new CL buffer to VBO", __FILE__);
 
 	if(err) *err = retErr;
 

@@ -14,14 +14,17 @@
 #include "clHelper.h"
 
 
-int mccCL(cl_float* values, cl_float isoValue, cl_uint4 valuesSizes,
-		  cl_float4 valuesDistances, cl_float4 valuesOffsets, cl_int2 valuesZBuffers,
-		  GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
-		  cl_float4** triangles, cl_float4** normals,
-		  clhResources resources, cl_program program,
-		  cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
-		  cl_kernel classificationKernel, cl_kernel compactionKernel,
-		  cl_kernel generationKernel*/);
+cl_int mccInit(const clhResources initializedResources);
+
+cl_int mccRunCL(const cl_uint deviceIndex, cl_float* values, cl_float isoValue,
+				cl_uint4 valuesSizes, cl_float4 valuesDistances,
+				cl_float4 valuesOffsets, cl_int2 valuesZBuffers,
+				GLuint* trianglesVBO, GLuint* normalsVBO, size_t* outSize/*,
+				cl_float4** triangles, cl_float4** normals,
+				clhResources resources, cl_program program,
+				cl_mem trianglesTableBuffer, cl_mem verticesTableBuffer,
+				cl_kernel classificationKernel, cl_kernel compactionKernel,
+				cl_kernel generationKernel*/);
 
 void mccReleaseCL();
 

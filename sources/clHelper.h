@@ -21,7 +21,7 @@ struct _clhResources {
 	cl_device_id* 		devices;
 	cl_context 			context;
 	cl_command_queue* 	cmdQueues;
-	size_t*				wgSizes;
+	size_t*				mwgSizes;
 	cl_ulong*			memSizes;
 };
 
@@ -57,15 +57,29 @@ char* clhGetDeviceInfo(const cl_device_id		/* device */,
 					   char*					/* info */,
 					   cl_int*					/* err */);
 
-size_t clhGetDeviceMaxWorkGroupSize(const cl_device_id		/* device */,
-									cl_int*					/* err */);
-
 cl_ulong clhGetDeviceGlobalMemorySize(const cl_device_id	/* device */,
 									  cl_int*				/* err */);
+									  
+cl_ulong clhGetDeviceMaxMemoryAllocSize(const cl_device_id	 	/* device */,
+										cl_int* 				/* err */);
+										
+cl_uint clhGetDeviceAddressBits(const cl_device_id		/* device */,
+								cl_int*					/* err */);
+
+size_t clhGetDeviceMaxWorkGroupSize(const cl_device_id		/* device */,
+									cl_int*					/* err */);
 
 size_t clhGetKernelMaxWorkGroupSize(const cl_kernel 		/* kernel */,
 									const cl_device_id		/* device */,
 									cl_int* 				/* err */);
+									
+cl_int clhSetCmdQueueProfilingState(const cl_command_queue 		/* cmdQueue */,
+									const cl_bool 				/* enable */);
+									
+char* clhGetEventProfilingInfo(const cl_event		/* event */,
+							   const size_t			/* infoStrSize */,
+							   char*				/* infoStr */,
+							   cl_int*				/* err */);
 
 cl_program clhBuildProgramFromSource(const char*			/* source */,
 									 const clhResources		/* resources */,
