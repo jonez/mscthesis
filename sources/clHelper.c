@@ -233,8 +233,10 @@ clhResources clhInitResources(const char* platformName,
 	//TODO: add back GL and GLX context
 	cl_context_properties contexProperties[] = {
 			 CL_CONTEXT_PLATFORM, (cl_context_properties)(platform),
+#if USE_GL
 			 CL_GL_CONTEXT_KHR, (cl_context_properties)glXGetCurrentContext(),
 			 CL_GLX_DISPLAY_KHR, (cl_context_properties)glXGetCurrentDisplay(),
+#endif
 			 0
 	 };
 

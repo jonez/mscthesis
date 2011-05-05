@@ -15,6 +15,7 @@
 #define ENABLE !DISABLE
 
 #define EXIT_ON_ERROR 0
+#define USE_GL TRUE
 
 #define KB 1024 // 1024^1
 #define MB 1048576 // 1024^2

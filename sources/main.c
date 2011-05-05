@@ -227,7 +227,9 @@ void initGL(int argc, char** argv) {
 
 int main(int argc, char** argv) {
 
+#if USE_GL
 	initGL(argc, argv);
+#endif
 
 //	clsTestScan();
 //	test();
@@ -407,7 +409,9 @@ int main(int argc, char** argv) {
 
 	// Turn the flow of control over to GLUT
 
+#if USE_GL
 	glutMainLoop();
+#endif
 
 	free(dataset);
 	free(datasetModel);

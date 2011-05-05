@@ -471,18 +471,25 @@ cl_int mccRunCL(const cl_uint deviceIndex, cl_float* values, cl_float isoValue,
 
 		//TODO: back to vbo buffer
 		size_t trianglesBufferSize = vertexCount * sizeof(cl_float4);
-//		cl_mem trianglesBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE,
-//				trianglesBufferSize, NULL, &err);
+#if USE_GL
 		GLuint trianglesVBORet;
-		cl_mem trianglesBuffer = clhCreateGLCLBuffer(context, trianglesBufferSize, &trianglesVBORet, &err);
+		cl_mem trianglesBuffer = clhCreateGLCLBuffer(context, trianglesBufferSize,
+				&trianglesVBORet, &err);
+#else
+		cl_mem trianglesBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				trianglesBufferSize, NULL, &err);
+#endif
 		clhErrorInfo(err, "create triangles buffer", "mcCore");
 
 		//TODO: back to vbo buffer
 		size_t normalsBufferSize = vertexCount * sizeof(cl_float4);
-//		cl_mem normalsBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE,
-//				normalsBufferSize, NULL, &err);
+#if USE_GL
 		GLuint normalsVBORet;
 		cl_mem normalsBuffer = clhCreateGLCLBuffer(context, normalsBufferSize, &normalsVBORet, &err);
+#else
+		cl_mem normalsBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				normalsBufferSize, NULL, &err);
+#endif
 		clhErrorInfo(err, "create normals buffer", "mcCore");
 
 
@@ -524,9 +531,11 @@ cl_int mccRunCL(const cl_uint deviceIndex, cl_float* values, cl_float isoValue,
 		clhErrorInfo(err, "set generation kernel arguments", "mcCore");
 
 		//TODO: add back acquire GL objects
+#if USE_GL
 	    err = clEnqueueAcquireGLObjects(cmdQueue, 1, &trianglesBuffer, 0, NULL, NULL);
 	    err |= clEnqueueAcquireGLObjects(cmdQueue, 1, &normalsBuffer, 0, NULL, NULL);
 	    clhErrorInfo(err, "aquire gl objects", "mcCore");
+#endif
 
 
 	    size_t globalWorkSize = ceil(occupiedVoxelsCount / generationMaxWGS)
@@ -548,9 +557,11 @@ cl_int mccRunCL(const cl_uint deviceIndex, cl_float* values, cl_float isoValue,
 		clhErrorInfo(err, "wait for generation kernel", "mcCore");
 
 		//TODO: add back release GL objects
-	    err = clEnqueueReleaseGLObjects(cmdQueue, 1, &trianglesBuffer, 0, NULL, NULL);
-	    err |= clEnqueueReleaseGLObjects(cmdQueue, 1, &normalsBuffer, 0, NULL, NULL);
-	    clhErrorInfo(err, "release gl objects", "mcCore");
+#if USE_GL
+		err = clEnqueueReleaseGLObjects(cmdQueue, 1, &trianglesBuffer, 0, NULL, NULL);
+		err |= clEnqueueReleaseGLObjects(cmdQueue, 1, &normalsBuffer, 0, NULL, NULL);
+		clhErrorInfo(err, "release gl objects", "mcCore");
+#endif
 
 		clhGetEventProfilingInfo(event, sizeof(infoStr), infoStr, &err);
 		printf("Profiling event 'generation kernel'\n%s", infoStr);
@@ -586,8 +597,10 @@ cl_int mccRunCL(const cl_uint deviceIndex, cl_float* values, cl_float isoValue,
 //		if(normals) *normals = normalsRet;
 //		if(triangles) *triangles = NULL;
 //		if(normals) *normals = NULL;
+#if USE_GL
 		if(trianglesVBO) *trianglesVBO = trianglesVBORet;
 		if(normalsVBO) *normalsVBO = normalsVBORet;
+#endif
 		if(outSize) *outSize = vertexCount;
 
 		printf( "Memory allocation\n"
@@ -604,8 +617,10 @@ cl_int mccRunCL(const cl_uint deviceIndex, cl_float* values, cl_float isoValue,
 
 //		if(triangles) *triangles = NULL;
 //		if(normals) *normals = NULL;
+#if USE_GL
 		if(trianglesVBO) trianglesVBO = NULL;
 		if(normalsVBO) normalsVBO = NULL;
+#endif
 		if(outSize) *outSize = 0;
 
 		printf(	"Memory allocation\n"
