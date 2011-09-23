@@ -6,14 +6,14 @@
  *
  * Notes:	Try to use libc functions instead of system calls to guarantee
  * 			better portability.
+ *			Create generic logging capabilities
  */
 
 #include "utilities.h"
 
-#include <stdlib.h>
-#include <stdio.h>
+#include "common.h"
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 clock_t getCurrentTime() {
 
@@ -25,17 +25,35 @@ clock_t getCurrentTimeInMili() {
 	return clock() / (CLOCKS_PER_SEC / 1000);
 }
 
-long calculateDiffTimeInSec(clock_t begin, clock_t end) {
-
-	return (end - begin) / (CLOCKS_PER_SEC / 1000000);
-}
-
 long calculateDiffTimeInMiliSec(clock_t begin, clock_t end) {
 
-	return calculateDiffTimeInSec(begin, end) * 1000;
+	return (end - begin) / (CLOCKS_PER_SEC / 1000);
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
+long calculateDiffTimeInSec(clock_t begin, clock_t end) {
+
+	return calculateDiffTimeInSec(begin, end) / 1000;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+/*static FILE* logStream = DEFAULT_LOG_STREAM;
+
+FILE* setLogStream(FILE* stream) {
+
+	FILE* oldStream = logStream;
+	logStream = stream;
+	
+	return oldStream;
+}*/
+
+void logMessage(const char* message, const char* source, FILE* stream) {
+	
+	fprintf(stream ? stream : DEFAULT_LOG_STREAM, "»» %ldms @%s » %s\n",
+			getCurrentTimeInMili(), source, message);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 int *makeIntArray(int size) {
 
@@ -94,35 +112,109 @@ float* makeFloatBlock(const int sizeX, const int sizeY, const int sizeZ) {
 float* loadCharBlock(const char *path, const int szX, const int szY, const int szZ) {
 
 	FILE* fd;
-	size_t fz = szX * szY * szZ;
-//	long slice = szX * szY;
+	size_t  /* fz = 0 ,*/ bz = szX * szY * szZ;
 	float* data;
 
 	// open file for reading
-	fd = fopen(path, "r");
-	if (fd == NULL) {
-		printf("Error while opennig '%s' file.\n", path);
+	if (!(fd = fopen(path, "r"))) {
+		printf("Error while opening %s file.\n", path);
 		return NULL;
 	}
 
-	printf("Loading dataset from '%s' file.\n", path);
-
 	// determine file size
-
-	//if(fseek(fd, 0, SEEK_END) == 0) {
-	//	printf("Error while operating on %s file.\n", path);
-	//	return NULL;
-	//}
-//	fseek(fd, 0, SEEK_END);
+//	if(fseek(fd, 0, SEEK_END)) {
+//		printf("Error while operating on %s file.\n", path);
+//		return NULL;
+//	}
 //	fz = ftell(fd);
 //	rewind(fd);
 
-	data = (float*)calloc(fz, sizeof(float));
+	data = (float*)calloc(bz, sizeof(float));
 	int i = 0;
-	while((data[i++] = fgetc(fd)) != EOF && i < fz);
+	while((data[i++] = fgetc(fd)) != EOF && i < bz);
 
-//	for(i = 0; i < slice; i++)
-//		data[i] = data[slice + i];
+	return data;
+}
+
+float* loadFloatBlock(const char *path, const int szX, const int szY, const int szZ) {
+
+	FILE* fd;
+	size_t  fz, bz = szX * szY * szZ;
+	float* data;
+
+	// open file for reading
+	if (!(fd = fopen(path, "r"))) {
+		printf("Error while opening %s file.\n", path);
+		return NULL;
+	}
+
+	// determine file size
+//	if(fseek(fd, 0, SEEK_END)) {
+//		printf("Error while operating on %s file.\n", path);
+//		return NULL;
+//	}
+//	fz = ftell(fd);
+//	rewind(fd);
+
+	printf("te");
+	fflush(NULL);
+
+	data = (float*)calloc(bz, sizeof(float));
+	fz = fread(data, sizeof(float), bz, fd);
+	
+//	printf("te");
+//	fflush(NULL);
+	
+//	for(int i = 0; i < bz; i++)
+//		data[i] = (int)data[i];
+	
+	printf("te");
+	fflush(NULL);
+	
+//	for(int i = 0; i < 10; i++)
+//		printf("%0.2f, ", data[i]);
+//	printf("%0.1f, ", data[167 + 1024 * 499]); // 104,4
+//	printf("%0.1f", data[163 + 1024 * 494]); // -79.6
+
+	return data;
+}
+
+float* loadCharBlockRepeat(const char *path, const int szX, const int szY, const int szZ) {
+
+	const int n = 8;
+
+	FILE* fd;
+	size_t  fz = 0, bz = szX * szY * szZ * n;
+	float* data;
+
+	// open file for reading
+	if (!(fd = fopen(path, "r"))) {
+		printf("Error while opening %s file.\n", path);
+		return NULL;
+	}
+
+	// determine file size
+	if(fseek(fd, 0, SEEK_END)) {
+		printf("Error while operating on %s file.\n", path);
+		return NULL;
+	}
+	fz = ftell(fd);
+	rewind(fd);
+
+	data = (float*)calloc(bz, sizeof(float));
+	for(int z = 0; z < szZ; z++)
+		for(int y = 0; y < szY; y++)
+			for(int x = 0; x < szX; x++) {
+				int value = fgetc(fd);
+				data[x + y * szX * 2 + z * szX * szY * 4] = (float)value;
+				data[(x + szX) + y * szX * 2 + z * szX * szY * 4] = (float)value;
+				data[x + (y + szY) * szX * 2 + z * szX * szY * 4] = (float)value;
+				data[(x + szX) + (y + szY) * szX * 2 + z * szX * szY * 4] = (float)value;
+				data[x + y * szX * 2 + (z + szZ) * szX * szY * 4] = (float)value;
+				data[(x + szX) + y * szX * 2 + (z + szZ) * szX * szY * 4] = (float)value;
+				data[x + (y + szY) * szX * 2 + (z + szZ) * szX * szY * 4] = (float)value;
+				data[(x + szX) + (y + szY) * szX * 2 + (z + szZ) * szX * szY * 4] = (float)value;
+			}
 
 	return data;
 }

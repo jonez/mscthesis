@@ -5,8 +5,9 @@
  *      Author: jonez
  *
  * Notes: use built-in vectores when possible
- *		  use inline functions
- *		  use local memory
+ *		  use inline functions or macros
+ *		  use local memory to store corner values
+ *		  interleave load/save with logical operations
  */
 
 #pragma OPENCL EXTENSION cl_khr_gl_sharing : enable
@@ -83,13 +84,6 @@ kernel void mcClassification(read_only image3d_t values,
 	float yfi = yf + 1.0f;
 	float zfi = zf + 1.0f;
 	
-	// ulong2?
-	// work-item and data set sizes
-	size_t sizeX = get_global_size(0);
-	size_t sizeY = get_global_size(1);
-	
-	size_t position = getPosition(x, y, z, sizeX, sizeY);
-	
 	// values of voxel vertices
 	float corners[8];
 	corners[0] = getValue(values, valuesSampler, valuesBuffers, xf,  yf,  zf );
@@ -112,10 +106,17 @@ kernel void mcClassification(read_only image3d_t values,
 	combination += (uint)(corners[6] < isoValue) * 64; 
 	combination += (uint)(corners[7] < isoValue) * 128;
 	
+	// ulong2?
+	// work-item and data set sizes
+	size_t sizeX = get_global_size(0);
+	size_t sizeY = get_global_size(1);
+	
+	size_t outputPosition = getPosition(x, y, z, sizeX, sizeY);
+	
 	// output two arrays
 	uchar vertices = vTable[combination];
-	vVoxels[position] = vertices;
-	oVoxels[position] = (vertices > 0) ? OCCUPIED_VOXEL : EMPTY_VOXEL;
+	vVoxels[outputPosition] = vertices;
+	oVoxels[outputPosition] = (vertices > 0) ? OCCUPIED_VOXEL : EMPTY_VOXEL;
 	
 }
 
@@ -126,12 +127,12 @@ kernel void mcCompaction(global float* values,
 						 global size_t* result) {
 	
 	// get coordinates
-	size_t size = get_global_size(0);
+//	size_t size = get_global_size(0);
 	size_t position = get_global_id(0);
-	size_t newPosition = scannedValues[position];
-
-	if(values[position] >= 1/* && (getPosition < size)*/)
-		result[newPosition] = position;
+	size_t compactedPosition = scannedValues[position];
+	
+	if(values[position] != EMPTY_VOXEL/* && (getPosition < size)*/)
+		result[compactedPosition] = position;
 	
 }
 
@@ -181,7 +182,7 @@ inline float4 vertexInterpolation(float iso,
 //	
 //}
 
-inline float4 verticeNormal(read_only image3d_t values, 
+inline float4 vertexNormal(read_only image3d_t values,
 							const sampler_t sampler,
 							const float4 buffers,
 							const float4 v) {
@@ -201,31 +202,31 @@ inline float4 verticeNormal(read_only image3d_t values,
 }
 
 // classify all voxels created from 'values', using 'isoValue' as reference;
-// the output result is two arrays, 'tOutput' (float4) containing all iso- 
+// the output result is two arrays, 'tOutput' (float4) containing all iso-
 // surface vertices in groups of 3 (a triangle) and 'nOutput' (float4)
 // containing a normal vector for each triangle (or 3 vertices)
 kernel void mcGeneration(read_only image3d_t values, 
 						 const sampler_t valuesSampler,
-						 const uint count,
-						 const uint2 size,
+						 const ulong count,
 						 const float isoValue,
+						 const uint4 voxelSizes,
 						 const float4 valuesDistances,
 						 const float4 valuesOffsets,
 						 const float4 valuesBuffers,
 						 constant uchar* tTable,
 						 constant uchar* vTable,
-						 global float* scanned,
+						 global float* scanned, 
 						 global size_t* compacted,
 						 global float4* tOutput,
 						 global float4* nOutput) {
 	
 	
-	size_t position = get_global_id(0);
+	size_t rawPosition = get_global_id(0);
 	
-	if(position < count) {
+	if(rawPosition < count) {
 	
-		size_t rawPosition = compacted[position];
-		int4 coordinates = getCoordinates(rawPosition, size);
+		size_t position = compacted[rawPosition];
+		int4 coordinates = getCoordinates(position, voxelSizes.xy);
 			
 		// kernel and values coordinates
 		float xf = coordinates.x;
@@ -295,41 +296,41 @@ kernel void mcGeneration(read_only image3d_t values,
 		
 		// fill output data in form of triangles and their normal vector
 		// each iteration creates one triangle 
-		uint voxelVertices = vTable[combination];
+		uint verticesCount = vTable[combination];
 		constant uchar* edges = &tTable[combination * VOXEL_VERTICES]; // all edge values should be in private (or at least local) memory
 		
-		size_t voxelPosition = scanned[rawPosition];
+		size_t outputPosition = scanned[position];
 	
-		for(uint v = 0; v < voxelVertices; v += TRIANGLE_VERTICES) {
+		for(uint v = 0; v < verticesCount; v += TRIANGLE_VERTICES) {
 		
-			size_t trianglePosition = voxelPosition + v;
-//			size_t normalPosition = (voxelPosition / TRIANGLE_VERTICES) + n;
+			size_t triangleOutputPosition = outputPosition + v;
+//			size_t normalPosition = (voxelOutputPosition / TRIANGLE_VERTICES) + n;
 			
 	//		uchar triangleEdges[3] = {edges[v], edges[v + 1], edges[v + 2]}; // debug purposes
 	//		float4 triangle[3] = {vertices[triangleEdges[0]], vertices[triangleEdges[1]], vertices[triangleEdges[2]]}; // debug purposes
 //			float4 triangle[3] = {vertices[edges[v]], vertices[edges[v + 1]], vertices[edges[v + 2]]};
 		
 	//		triangle[0].w = triangleEdges[0]; // debug purposes
-	//		triangle[0].w = trianglePosition; // debug purposes
-			tOutput[trianglePosition] = vertices[edges[v]] * valuesDistances + valuesOffsets;
-//			nOutput[trianglePosition] = verticesNormal[edges[v]];
-			nOutput[trianglePosition] = verticeNormal(values, valuesSampler, valuesBuffers, vertices[edges[v]]);
+	//		triangle[0].w = triangleOutputPosition; // debug purposes
+			tOutput[triangleOutputPosition] = vertices[edges[v]] * valuesDistances + valuesOffsets;
+//			nOutput[triangleOutputPosition] = verticesNormal[edges[v]];
+			nOutput[triangleOutputPosition] = vertexNormal(values, valuesSampler, valuesBuffers, vertices[edges[v]]);
 			
 	//		triangle[1].w = triangleEdges[1]; // debug purposes
 	//		triangle[1].w = combination; // debug purposes
-			tOutput[trianglePosition + 1] = vertices[edges[v + 1]] * valuesDistances + valuesOffsets;
-//			nOutput[trianglePosition + 1] = verticesNormal[edges[v + 1]];
-			nOutput[trianglePosition + 1] = verticeNormal(values, valuesSampler, valuesBuffers, vertices[edges[v + 1]]);
+			tOutput[triangleOutputPosition + 1] = vertices[edges[v + 1]] * valuesDistances + valuesOffsets;
+//			nOutput[triangleOutputPosition + 1] = verticesNormal[edges[v + 1]];
+			nOutput[triangleOutputPosition + 1] = vertexNormal(values, valuesSampler, valuesBuffers, vertices[edges[v + 1]]);
 			
 	//		triangle[2].w = triangleEdges[2]; // debug purposes
 	//		triangle[2].w = 1; // debug purposes
-			tOutput[trianglePosition + 2] = vertices[edges[v + 2]] * valuesDistances + valuesOffsets;
-//			nOutput[trianglePosition + 2] = verticesNormal[edges[v + 2]];
-			nOutput[trianglePosition + 2] = verticeNormal(values, valuesSampler, valuesBuffers, vertices[edges[v + 2]]);
+			tOutput[triangleOutputPosition + 2] = vertices[edges[v + 2]] * valuesDistances + valuesOffsets;
+//			nOutput[triangleOutputPosition + 2] = verticesNormal[edges[v + 2]];
+			nOutput[triangleOutputPosition + 2] = vertexNormal(values, valuesSampler, valuesBuffers, vertices[edges[v + 2]]);
 			
-	//		tOutput[trianglePosition] = (float4)(v); // debug purposes
-	//		tOutput[trianglePosition + 1] = (float4)(v+1); // debug purposes
-	//		tOutput[trianglePosition + 2] = (float4)(v+2); // debug purposes
+	//		tOutput[triangleOutputPosition] = (float4)(v); // debug purposes
+	//		tOutput[triangleOutputPosition + 1] = (float4)(v+1); // debug purposes
+	//		tOutput[triangleOutputPosition + 2] = (float4)(v+2); // debug purposes
 		
 //			nOutput[normalPosition] = triangleNormal(triangle);
 	//		nOutput[normalPosition] = triangleNormal(triangle[0], triangle[1], triangle[2]);
@@ -338,7 +339,7 @@ kernel void mcGeneration(read_only image3d_t values,
 	//	tOutput[get_global_id(0)].x = x;
 	//	tOutput[get_global_id(0)].y = y;
 	//	tOutput[get_global_id(0)].z = z;
-	//	tOutput[get_global_id(0)].w = scanned[rawPosition];
+	//	tOutput[get_global_id(0)].w = scanned[position];
 		
 	}
 	

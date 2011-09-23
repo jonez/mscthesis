@@ -13,10 +13,17 @@
 
 #include "clHelper.h"
 
+////////////////////////////////////////////////////////////////////////////////
 
 int clsGetVerbose();
 
-void clsSetVerbose(const int state);
+void clsSetVerbose(const int		/* state */);
+
+////////////////////////////////////////////////////////////////////////////////
+
+cl_int clsInit(const clhResources		/* initializedResources */);
+
+void clsFree();
 
 cl_mem clsScanFromDevice(const clhResources		/* resources */,
 						 const int				/* deviceIndex */,
@@ -24,10 +31,6 @@ cl_mem clsScanFromDevice(const clhResources		/* resources */,
 						 const size_t			/* size */,
 						 cl_float*				/* sum */,
 						 cl_int*				/* err */);
-
-void clsRelease();
-
-//int testScan();
 
 
 #endif /* CLSCAN_H_ */

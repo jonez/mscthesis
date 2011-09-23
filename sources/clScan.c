@@ -55,15 +55,19 @@
 
 #include "clScan.h"
 
-#include <stdlib.h>
-#include <stdio.h>
+//#include <stdlib.h>
+//#include <stdio.h>
 #include <stdbool.h>
 #include <math.h>
 #include <string.h>
 
 #include "common.h"
+#include "utilities.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define _clhLogErr_(m) clhLogErr_(clErr, m, deviceIndex)
+#define _clhLogErr__(m) clhLogErr__(clErr, m)
 
 #define KERNELS_FILE "scan.cl"
 
@@ -77,16 +81,17 @@
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static int initialized = FALSE;
+// print something
 
-clhResources			resources;
+static int CLS_VERBOSE = DISABLE;
 
-cl_program				cumputeProgram;
-cl_kernel*				computeKernels;
+int clsGetVerbose() {
+	return CLS_VERBOSE;
+}
 
-size_t*					wgSizes;
-cl_mem**				scanPartialSums;
-cl_uint*				levelsAllocated;
+void clsSetVerbose(const int state) {
+	CLS_VERBOSE = state;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -112,17 +117,16 @@ static const unsigned int KernelCount = sizeof(KernelNames) / sizeof(char *);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// print something
+static int initialized = FALSE;
 
-int	CLS_VERBOSE	= FALSE;
+static clhResources		resources;
 
-int clsGetVerbose() {
-	return CLS_VERBOSE;
-}
+static cl_program		cumputeProgram;
+static cl_kernel*		computeKernels;
 
-void clsSetVerbose(const int state) {
-	CLS_VERBOSE = state;
-}
+static size_t*			wgSizes;
+static cl_mem**			scanPartialSums;
+static cl_uint*			levelsAllocated;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -660,7 +664,7 @@ void ScanReference( float* reference, float* input, const unsigned int count)
 //		// Create each compute kernel from within the program
 //		ComputeKernels[i] = clCreateKernel(ComputeProgram, KernelNames[i], &retErr);
 //		if(CLS_VERBOSE || !ComputeKernels[i] || retErr) {
-//			clhErrorInfo(retErr, "creating kernel", "clScan");
+//			clhErrorInfo(retErr, "creating kernel");
 //
 //			if(retErr) {
 //				if(err) *err = retErr;
@@ -679,7 +683,7 @@ void ScanReference( float* reference, float* input, const unsigned int count)
 //
 //	outputBuffer = clCreateBuffer(ComputeContext, CL_MEM_READ_WRITE, sizeof(cl_float) * size, NULL, &retErr);
 //	if(CLS_VERBOSE || !outputBuffer || retErr) {
-//		clhErrorInfo(retErr, "creating output buffer", "clScan");
+//		clhErrorInfo(retErr, "creating output buffer");
 //
 //		if(retErr) {
 //			if(err) *err = retErr;
@@ -692,7 +696,7 @@ void ScanReference( float* reference, float* input, const unsigned int count)
 //
 //	retErr = clFinish(ComputeCommands);
 //	if(CLS_VERBOSE || !outputBuffer || retErr) {
-//		clhErrorInfo(retErr, "flushing command queue", "clScan");
+//		clhErrorInfo(retErr, "flushing command queue");
 //
 //		if(retErr) {
 //			if(err) *err = retErr;
@@ -720,41 +724,41 @@ void ScanReference( float* reference, float* input, const unsigned int count)
 //	return outputBuffer;
 //}
 
-cl_int clsInit(const clhResources initializedResources) {
+cl_int clsInit(const clhResources initializedCLResources) {
 
-	cl_int		retErr;
+	if(initializedCLResources)
+		resources = initializedCLResources;
+	else
+		return CL_INVALID_VALUE;
+
+	cl_int		clErr;
 	cl_uint		devCount = resources->devCount;
 
-	if(initializedResources)
-		resources = initializedResources;
-	else {
-		resources = clhInitResources(NULL, 0, 0, &retErr);
-		if(retErr) return retErr;
-	}
-
-	cumputeProgram = clhBuildProgramFromFile(KERNELS_FILE, resources, &retErr);
-	if(retErr) return retErr;
-
+	cumputeProgram = clhBuildProgramFromFile_(KERNELS_FILE, resources, TRUE, TRUE, &clErr);
+	if(clErr) return clErr;
+	
 	wgSizes = (size_t*)calloc(devCount, sizeof(size_t));
-	for(int i = 0; i < devCount; i++)
-		wgSizes[i] = resources->mwgSizes[i];
-
+	computeKernels = (cl_kernel*)calloc(KernelCount, sizeof(cl_kernel));
 	scanPartialSums = (cl_mem**)calloc(devCount, sizeof(cl_mem*));
 	levelsAllocated = (unsigned int*)calloc(devCount, sizeof(unsigned int));
 
-	computeKernels = (cl_kernel*)malloc(KernelCount * sizeof(cl_kernel));
+	clhRetainResources(resources);
+
+	for(int i = 0; i < devCount; i++)
+		wgSizes[i] = resources->mwgSizes[i];
+	
 	for(int i = 0; i < KernelCount; i++) {
 		// Create each compute kernel from within the program
-		computeKernels[i] = clCreateKernel(cumputeProgram, KernelNames[i], &retErr);
-		if(CLS_VERBOSE || !computeKernels[i] || retErr) {
-			clhErrorInfo(retErr, "creating kernel", "clScan");
+		computeKernels[i] = clCreateKernel(cumputeProgram, KernelNames[i], &clErr);
+		if(CLS_VERBOSE || !computeKernels[i] || clErr) {
+			_clhLogErr__("creating kernel");
 
-			if(retErr) return retErr;
+			if(clErr) goto ret;
 		}
 
 		for(int j = 0; j < devCount; j++) {
-			size_t kwgSize = clhGetKernelMaxWorkGroupSize(computeKernels[i], resources->devices[j], &retErr);
-			if(retErr) return retErr;
+			size_t kwgSize = clhGetKernelMaxWorkGroupSize(computeKernels[i], resources->devices[j], &clErr);
+			if(clErr) goto ret;
 
 			wgSizes[j] = min(wgSizes[j], kwgSize);
 		}
@@ -762,32 +766,37 @@ cl_int clsInit(const clhResources initializedResources) {
 
 	initialized = TRUE;
 
-	return retErr;
+	if(CLS_VERBOSE)	logMsg_("SUCCESS: initialized!");
+	
+ret:
+	
+	if(!initialized) clsFree();
+
+	return clErr;
 }
 
 cl_mem clsScanFromDevice(const clhResources initResources, const int deviceIndex,
 		const cl_mem inputBuffer, const size_t size,
 		cl_float* sum, cl_int* err) {
 
-	cl_int			retErr;
+	if(!initialized) {
+		logMsg_("ERROR: wasn't initialized!");
+		if(err) *err = CL_INVALID_VALUE;
+		return NULL;
+	}
 
-	if(!initialized)
-		if((retErr = clsInit(initResources)))
-			if(retErr) {
-				if(err) *err = retErr;
-				return NULL;
-			}
+	cl_int					clErr;
+	cl_context				context = resources->context;
+	cl_command_queue		cmdQueue = resources->cmdQueues[deviceIndex];
 
-	cl_context computeContext = resources->context;
-	cl_command_queue computeCommands = resources->cmdQueues[deviceIndex];
+	cl_mem outputBuffer = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_float) * size, NULL, &clErr);
+	if(CLS_VERBOSE || !outputBuffer || clErr) {
+		_clhLogErr_("creating output buffer");
 
-
-	cl_mem outputBuffer = clCreateBuffer(computeContext, CL_MEM_READ_WRITE, sizeof(cl_float) * size, NULL, &retErr);
-	if(CLS_VERBOSE || !outputBuffer || retErr) {
-		clhErrorInfo(retErr, "creating output buffer", "clScan");
-
-		if(retErr) {
-			if(err) *err = retErr;
+		if(clErr) {
+			if(err) *err = clErr;
+			clReleaseMemObject(outputBuffer);
+			
 			return NULL;
 		}
 	}
@@ -796,56 +805,71 @@ cl_mem clsScanFromDevice(const clhResources initResources, const int deviceIndex
 	createPartialSumBuffers(deviceIndex, size);
 	PreScanBuffer(deviceIndex, outputBuffer, inputBuffer, wgSize, wgSize, size);
 
-	retErr = clFinish(computeCommands);
-	if(CLS_VERBOSE || !outputBuffer || retErr) {
-		clhErrorInfo(retErr, "flushing command queue", "clScan");
+	clErr = clEnqueueBarrier(cmdQueue);
+	if(CLS_VERBOSE || !outputBuffer || clErr) {
+		_clhLogErr_("flushing command queue");
 
-		if(retErr) {
-			if(err) *err = retErr;
-			return NULL;
+		if(clErr) {
+			if(err) *err = clErr;
+			clReleaseMemObject(outputBuffer);
+			outputBuffer = NULL;
+			
+			goto ret;
 		}
 	}
-	
-
-	
 
 	if(sum) {
 		cl_float2 retSum;
 		
-		retErr = clEnqueueReadBuffer(computeCommands, inputBuffer, CL_TRUE,
+		clErr = clEnqueueReadBuffer(cmdQueue, inputBuffer, CL_TRUE,
 				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum.s[0], 0, NULL, NULL);
-		retErr |= clEnqueueReadBuffer(computeCommands, outputBuffer, CL_TRUE,
+//		_clhLogErr_("retrieving sum");
+		clErr |= clEnqueueReadBuffer(cmdQueue, outputBuffer, CL_TRUE,
 				sizeof(cl_float) * (size - 1), sizeof(cl_float), &retSum.s[1], 0, NULL, NULL);
-		if(CLS_VERBOSE || retErr) {
-			clhErrorInfo(retErr, "retrieving sum", "clScan");
+		if(CLS_VERBOSE || clErr) {
+			_clhLogErr_("retrieving sum");
 
-			if(retErr) {
-				if(err) *err = retErr;
-				return NULL;
+			if(clErr) {
+				if(err) *err = clErr;
+				clReleaseMemObject(outputBuffer);
+				outputBuffer = NULL;
+				
+				goto ret;
 			}
 		}
 
 		*sum = retSum.s[0] + retSum.s[1];
-		printf("sum: %.0f + %.0f = %.0f\n", retSum.s[0], retSum.s[1], *sum);
+		
+		if(CLS_VERBOSE)
+			printf("sum: %.0f + %.0f = %.0f\n", retSum.s[0], retSum.s[1], *sum);
 	}
 
-	// cleanup
+ret:
+
 	releasePartialSums(deviceIndex);
 
 	return outputBuffer;
 }
 
-void clsRelease() {
+void clsFree() {
 
+	cl_int clErr;
+	
 	initialized = FALSE;
 
+	clErr = clhReleaseResources(resources);
 	for(int i = 0; i < KernelCount; i++)
 		clReleaseKernel(computeKernels[i]);
 	clReleaseProgram(cumputeProgram);
-
+	if(CLS_VERBOSE || clErr) 
+		_clhLogErr__("releasing resources");
+	
+	free(wgSizes);
+	free(scanPartialSums);
+	free(levelsAllocated);
 	free(computeKernels);
 
-	printf("%s resources released!\n", __FILE__);
+	logMsg_("SUCCESS: resources released!");
 
 }
 

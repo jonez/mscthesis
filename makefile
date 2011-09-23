@@ -1,20 +1,44 @@
-CC=gcc
-FLAGS=-Wall -O3 -std=c99
+CC = gcc
+CFLAGS = -Wall -O3 -std=c99
+FLAGS = $(CFLAGS) -pthread
 
-SRCS=sources/*.c
-LIBS=-lm -lOpenCL -lGLEW -lGLU -lglut
-INCLUDES=-Iincludes/
+USE_GL = -DUSE_GL=TRUE
 
-EXEC=mc
+CLIBS = -lm -lOpenCL
+LIBS = $(CLIBS) -lGLEW -lGLU -lglut
+INCLUDES = -Iincludes/
 
-all: build link clear
+SRCS_DIR = sources
+SRCS_FILES = $(SRCS_DIR)/*.c
+KERNELS_DIR = kernels
+UTILS_DIR = $(SRCS_DIR)/utils
 
-build:
-	$(CC) $(FLAGS) -c $(SRCS) $(INCLUDES)
+CL_HELPER_SRC = clHelper
 
-link:
-	$(CC) *.o $(LIBS) -o $(EXEC)
+VIEWER = mcViewer
+BENCHMARK = mcBenchmark
+COMPILER = clCompiler
+
+
+all: setup viewer benchmark compiler clear
+
+setup:
+	mkdir $(KERNELS_DIR)
+
+viewer:
+	$(CC) $(FLAGS) $(USE_GL) -c $(UTILS_DIR)/$(VIEWER).c $(SRCS_FILES) $(INCLUDES)
+	$(CC) *.o $(LIBS) -o $(VIEWER)
+	rm -f $(VIEWER).o
+
+benchmark:
+	$(CC) $(FLAGS) -c $(UTILS_DIR)/$(BENCHMARK).c $(SRCS_FILES) $(INCLUDES)
+	$(CC) *.o $(CLIBS) -o $(BENCHMARK)
+	rm -f $(BENCHMARK).o
+
+compiler:
+	$(CC) $(CFLAGS) -c $(UTILS_DIR)/$(COMPILER).c $(SRCS_DIR)/$(CL_HELPER_SRC).c $(INCLUDES)
+	$(CC) *.o $(CLIBS) -o $(COMPILER)
+	rm -f $(COMPILER).o
 
 clear:
 	rm -rf *.o
-
